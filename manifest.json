@@ -1,0 +1,17 @@
+{
+  "name": "SimonRelays Desktop",
+  "short_name": "SimonRelays",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#f43f5e",
+  "description": "Premium Glassmorphic Audio Player",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
