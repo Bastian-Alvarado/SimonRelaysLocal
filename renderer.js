@@ -418,6 +418,74 @@ document.addEventListener('DOMContentLoaded', async () => {
     let downloadedTracksMap = new Map(); // url -> localPath
     let pendingDownloads = new Map(); // url -> progress
     let pendingUploads = new Set();  // url
+    let currentActiveBlobUrl = null;
+
+    // ── IndexedDB Configuration (PWA Offline Support) ───────────────────────
+    let db = null;
+    const DB_NAME = 'SimonRelaysOffline';
+    const DB_VERSION = 1;
+
+    async function initDB() {
+        if (db) return db;
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('tracks')) {
+                    db.createObjectStore('tracks', { keyPath: 'trackUrl' });
+                }
+            };
+            request.onsuccess = (e) => {
+                db = e.target.result;
+                resolve(db);
+            };
+            request.onerror = (e) => reject(e.target.error);
+        });
+    }
+
+    async function saveTrackToIDB(trackUrl, blob, metadata) {
+        const db = await initDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(['tracks'], 'readwrite');
+            const store = transaction.objectStore('tracks');
+            const request = store.put({ trackUrl, blob, metadata, savedAt: Date.now() });
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async function getTrackFromIDB(trackUrl) {
+        const db = await initDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(['tracks'], 'readonly');
+            const store = transaction.objectStore('tracks');
+            const request = store.get(trackUrl);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async function deleteTrackFromIDB(trackUrl) {
+        const db = await initDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(['tracks'], 'readwrite');
+            const store = transaction.objectStore('tracks');
+            const request = store.delete(trackUrl);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async function getAllDownloadedFromIDB() {
+        const db = await initDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(['tracks'], 'readonly');
+            const store = transaction.objectStore('tracks');
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
 
     // Lyrics Logic State
     const lyricsContainer = document.getElementById('immersive-lyrics-container');
@@ -1446,6 +1514,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // It was a tap, not a swipe
                 const isButtonAction = e.target.closest('button') || e.target.closest('.volume-container') || e.target.closest('.progress-bar');
                 if (!isButtonAction && typeof toggleImmersiveView === 'function') {
+                    e.preventDefault();
+                    e.stopPropagation();
                     toggleImmersiveView();
                 }
             }
@@ -3806,17 +3876,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    function playTrack(track, title, artist) {
+    async function playTrack(track, title, artist) {
         if (window.electronAPI) {
             window.electronAPI.updatePresence({ title, artist, startTime: Date.now(), isPaused: false });
         }
         globalPlayingTrack = track;
+        if (currentActiveBlobUrl) {
+            URL.revokeObjectURL(currentActiveBlobUrl);
+            currentActiveBlobUrl = null;
+        }
 
         const localPath = downloadedTracksMap.get(track.url);
         let fullAudioUrl = `${serverBaseUrl}${track.url}`;
 
-        if (localPath && window.electronAPI) {
-            fullAudioUrl = `simon-offline://${encodeURIComponent(localPath)}`;
+        if (localPath) {
+            if (window.electronAPI) {
+                fullAudioUrl = `simon-offline://${encodeURIComponent(localPath)}`;
+            } else if (localPath === 'indexeddb') {
+                // PWA: Play from IndexedDB
+                try {
+                    const saved = await getTrackFromIDB(track.url);
+                    if (saved && saved.blob) {
+                        currentActiveBlobUrl = URL.createObjectURL(saved.blob);
+                        fullAudioUrl = currentActiveBlobUrl;
+                        console.log('[PWA] Playing from offline storage:', track.url);
+                    }
+                } catch (e) {
+                    console.error('[PWA] IDB playback failed', e);
+                }
+            }
         }
 
         // Update Bottom Offline Icon
@@ -3920,8 +4008,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ── Offline Helper Logic ────────────────────────────────────────────────
+    async function initiatePWADownload(track) {
+        if (track.isLocal) return;
+        const url = `${serverBaseUrl}${track.url}`;
+
+        pendingDownloads.set(track.url, 0.01); // show start
+        refreshCurrentView();
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Network response was not ok');
+
+            const blob = await response.blob();
+            await saveTrackToIDB(track.url, blob, track.metadata);
+            
+            // Mark as offline in the local map
+            downloadedTracksMap.set(track.url, 'indexeddb');
+            console.log('[PWA] Track saved to IndexedDB:', track.url);
+        } catch (e) {
+            console.error('[PWA] Download failed', e);
+            alert('Failed to download track for offline use.');
+        } finally {
+            pendingDownloads.delete(track.url);
+            refreshCurrentView();
+        }
+    }
+
     async function initiateDownload(track) {
-        if (!window.electronAPI || track.isLocal) return;
+        if (track.isLocal) return;
+
+        if (!window.electronAPI) {
+            return initiatePWADownload(track);
+        }
+
         const url = `${serverBaseUrl}${track.url}`;
 
         pendingDownloads.set(track.url, 0);
@@ -3987,7 +4106,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function removeOfflineTrack(trackPath) {
-        if (!window.electronAPI) return;
+        if (!window.electronAPI) {
+            await deleteTrackFromIDB(trackPath);
+            downloadedTracksMap.delete(trackPath);
+            refreshCurrentView();
+            return;
+        }
         const fullUrl = `${serverBaseUrl}${trackPath}`;
         const success = await window.electronAPI.deleteOfflineTrack(fullUrl);
         if (success) {
@@ -4100,8 +4224,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const trackPath = fullUrl.replace(serverBaseUrl, '');
                 downloadedTracksMap.set(trackPath, info.localPath);
             }
-            refreshCurrentView();
+        } else {
+            // PWA Fallback: Sync from IndexedDB
+            try {
+                const tracks = await getAllDownloadedFromIDB();
+                downloadedTracksMap.clear();
+                tracks.forEach(t => {
+                    downloadedTracksMap.set(t.trackUrl, 'indexeddb');
+                });
+                console.log('[PWA] Offline state synced from IndexedDB:', downloadedTracksMap.size, 'tracks.');
+            } catch (e) {
+                console.error('[PWA] Failed to sync offline state from IndexedDB', e);
+            }
         }
+        refreshCurrentView();
     }
 
     function updateAlbumHeroOfflineStatus(album) {
@@ -4131,7 +4267,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function downloadAlbum(album) {
-        if (!window.electronAPI) return;
         if (!album || !album.tracks) return;
 
         // Download all tracks sequentially

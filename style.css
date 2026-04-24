@@ -1768,14 +1768,14 @@ body {
         inset: 0 !important;
         z-index: 600 !important;
         padding: 12px !important;
-        padding-bottom: 80px !important;
+        padding-bottom: 160px !important;
     }
     .settings-overlay {
         position: fixed !important;
         inset: 0 !important;
         z-index: 700 !important;
         padding: 12px !important;
-        padding-bottom: 80px !important; /* Space for Bottom Nav */
+        padding-bottom: 160px !important; /* Space for Bottom Nav */
     }
 
     /* Detail Views (Artist, Album, Playlist) - FULL BLEED HEROES & IMMERSIVE BACKDROP */
@@ -1783,7 +1783,7 @@ body {
         position: absolute !important;
         inset: 0 !important;
         z-index: 100 !important;
-        padding: 0 !important;
+        padding: 0 0 160px 0 !important;
         overflow-y: auto !important;
         background: #0a0a0f !important; /* solid fallback */
     }
@@ -2168,7 +2168,7 @@ body {
 /* --- Context Menu --- */
 .context-menu {
     position: fixed;
-    z-index: 1000;
+    z-index: 2500;
     background: rgba(20, 20, 25, 0.85);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
