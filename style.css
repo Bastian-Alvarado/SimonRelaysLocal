@@ -20,6 +20,23 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 .hidden { display: none !important; }
+.community-badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    color: white;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    z-index: 5;
+    pointer-events: none;
+}
 
 body {
     font-family: 'Montserrat', sans-serif;
@@ -1462,8 +1479,26 @@ body {
     margin-bottom: 2px;
 }
 
+.mobile-bottom-nav .nav-item:focus,
+.mobile-bottom-nav .nav-item:active,
+.mobile-bottom-nav .nav-item:focus-visible {
+    outline: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    -webkit-tap-highlight-color: transparent;
+}
+
 .mobile-bottom-nav .nav-item.active {
-    color: var(--accent);
+    color: var(--accent) !important;
+}
+
+.mobile-bottom-nav .nav-item.active svg {
+    color: var(--accent) !important;
+    stroke: var(--accent) !important;
+}
+
+.mobile-bottom-nav .nav-item.active span {
+    color: var(--accent) !important;
 }
 
 .mobile-bottom-nav .nav-item:active {
@@ -2188,3 +2223,21 @@ body {
     opacity: 1 !important;
 }
 
+
+/* Custom Playlist Covers */
+.playlist-art-interactive { position: relative; cursor: pointer; overflow: hidden; border-radius: 12px; width: 232px; height: 232px; flex-shrink: 0; box-shadow: 0 12px 32px rgba(0,0,0,0.6); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); background: rgba(255,255,255,0.05); }
+.playlist-art-interactive:hover { transform: scale(1.02); }
+.edit-cover-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s ease; backdrop-filter: blur(6px); color: white; z-index: 5; }
+.playlist-art-interactive:hover .edit-cover-overlay { opacity: 1; }
+.playlist-collage.custom-cover { 
+    width: 100%; 
+    height: 100%; 
+    display: block !important; 
+}
+.playlist-collage.custom-cover img { 
+    width: 100%; 
+    height: 100%; 
+    object-fit: cover; 
+    display: block;
+}
+@media (max-width: 768px) { .playlist-art-interactive { width: 160px; height: 160px; } }

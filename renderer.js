@@ -103,6 +103,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Settings Elements
     const settingsBtn = document.getElementById('settings-btn');
     const settingsView = document.getElementById('settings-view');
+    const profileView = document.getElementById('profile-view');
+    const profileBody = profileView ? profileView.querySelector('.profile-body') : null;
     const settingsCloseBtn = document.getElementById('settings-close-btn');
 
     // Firebase / Auth Elements
@@ -133,6 +135,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     let firebaseConfig = null;
     if (window.electronAPI && window.electronAPI.getFirebaseConfig) {
         firebaseConfig = await window.electronAPI.getFirebaseConfig();
+    } else {
+        // PWA / Browser Fallback: Fetch config from local backend
+        try {
+            const res = await fetch(`${serverBaseUrl}/api/firebase-config`);
+            if (res.ok) {
+                firebaseConfig = await res.json();
+                console.log('[Cloud] Firebase config fetched from server API.');
+            }
+        } catch (e) {
+            console.warn('[Cloud] Failed to fetch Firebase config from server API.', e);
+        }
     }
 
     if (firebaseConfig && firebaseConfig.apiKey) {
@@ -148,12 +161,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (user) {
                 console.log('[Cloud] User logged in:', user.email);
                 if (loginOverlay) loginOverlay.classList.add('hidden');
+                // Trigger fetch from Firebase
+                fetchPlaylists();
+
+                // Always update panels if they are currently visible
+                if (settingsView && settingsView.classList.contains('active')) renderSettingsPanel();
+                if (profileView && profileView.classList.contains('active')) renderProfilePanel();
             } else {
                 console.log('[Cloud] User logged out.');
                 // Show login overlay if not skipped in session
                 if (loginOverlay && !sessionStorage.getItem('skipLogin')) {
                     loginOverlay.classList.remove('hidden');
                 }
+                // Clear playlists on logout
+                allPlaylists = [];
+                renderPlaylistsStrip();
+                fetchPlaylists(); // Will trigger local fallback or empty render
+
+                if (settingsView && settingsView.classList.contains('active')) renderSettingsPanel();
+                if (profileView && profileView.classList.contains('active')) renderProfilePanel();
             }
 
             // Always update settings panel if it's currently visible
@@ -168,8 +194,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Mobile Bottom Nav Elements
     const mobileHomeBtn = document.getElementById('mobile-home-btn');
     const mobileSearchBtn = document.getElementById('mobile-search-btn');
+    const mobileQueueBtn = document.getElementById('mobile-queue-btn');
     const mobileSettingsBtn = document.getElementById('mobile-settings-btn');
-    const mobileNavItems = [mobileHomeBtn, mobileSearchBtn, mobileSettingsBtn];
+    const mobileProfileBtn = document.getElementById('mobile-profile-btn');
+    const mobileNavItems = [mobileHomeBtn, mobileSearchBtn, mobileQueueBtn, mobileSettingsBtn, mobileProfileBtn];
     const mobileSearchInput = document.getElementById('mobile-search-input');
 
     // Metadata Edit Elements
@@ -229,9 +257,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const trackContextMenu = document.getElementById('track-context-menu');
     const menuEditBtn = document.getElementById('menu-edit-btn');
     const menuPlaylistBtn = document.getElementById('menu-playlist-btn');
-
+    const menuRemovePlaylistBtn = document.getElementById('menu-remove-playlist-btn');
     let currentEditingTrack = null;
     let currentEditingAlbum = null;
+    let currentPlaylistId = null;
+    let currentTrackItem = null;
     let isAlbumMode = false;
     let newCoverArtBase64 = null;
 
@@ -448,8 +478,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function showImmersiveOverlay() {
-        // Can choose to hide queue overlay if it's open
-        hideQueueOverlay();
+        hideOverlays('immersive'); // Close settings/queue before opening immersive
         openViewAnimated(immersiveView);
         if (expandImmersiveBtn) expandImmersiveBtn.classList.add('active-icon');
 
@@ -487,9 +516,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function showQueueOverlay() {
+        hideOverlays('queue'); // Ensure other overlays like settings are closed
         queueView.classList.remove('hidden');
         queueView.classList.add('active');
-        queueBtn.classList.add('active-icon');
+        if (queueBtn) queueBtn.classList.add('active-icon');
         renderQueueView();
     }
 
@@ -561,13 +591,160 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Settings Panel Logic
     function openSettings(push = true) {
         if (push) navigateTo('settings');
+        hideOverlays('settings'); // Close other overlays first
         settingsView.classList.add('active');
-        settingsBtn.classList.add('settings-btn-active');
+        if (settingsBtn) settingsBtn.classList.add('settings-btn-active');
     }
 
     function closeSettings() {
         settingsView.classList.remove('active');
         settingsBtn.classList.remove('settings-btn-active');
+    }
+
+    function openProfile(push = true) {
+        if (push) navigateTo('profile');
+        hideOverlays('profile');
+        profileView.classList.add('active');
+    }
+
+    function closeProfile() {
+        profileView.classList.remove('active');
+    }
+
+    // ── Profile Panel Renderer ────────────────────────────────────────────────
+    function renderProfilePanel() {
+        if (!profileBody) return;
+
+        profileBody.innerHTML = `
+            <div class="settings-section">
+                <div class="settings-section-title">Account &amp; Sync</div>
+                <div class="settings-row" style="cursor: default;">
+                    ${currentUser ? `
+                        <div class="settings-profile-info">
+                            <div style="position: relative; width: 48px; height: 48px; flex-shrink: 0;">
+                                <img src="${currentUser.photoURL || 'icon.svg'}" alt="" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent); background: #1a1a20;">
+                            </div>
+                            <div style="flex: 1; min-width: 0;">
+                                <div class="settings-row-label" style="margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${currentUser.displayName || 'User'}</div>
+                                <div class="settings-row-sub" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${currentUser.email}</div>
+                            </div>
+                            <button id="profile-signout-btn" class="settings-reset-btn">Sign Out</button>
+                        </div>
+                    ` : `
+                        <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+                            <div class="settings-row-sub">Connect to Firebase to enable cross-device sync, cloud playlists, and remote control.</div>
+                            <button id="profile-login-btn" class="settings-save-btn" style="align-self: flex-start;">Connect Cloud</button>
+                        </div>
+                    `}
+                </div>
+            </div>
+            ${currentUser ? `
+                <div class="settings-section">
+                    <div class="settings-section-title">Edit Profile</div>
+                    <div class="profile-edit-container" style="display: flex; flex-direction: column; gap: 20px; width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 20px; width: 100%;">
+                             <div class="profile-pic-editor" id="profile-pic-trigger" style="position: relative; width: 100px; height: 100px; cursor: pointer; flex-shrink: 0;">
+                                <img id="profile-pic-preview" src="${currentUser.photoURL || 'icon.svg'}" alt="" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid var(--accent); background: #1a1a20;">
+                                <div class="edit-overlay" style="position: absolute; inset: 0; background: rgba(0,0,0,0.5); border-radius: 50%; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s;">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                                </div>
+                             </div>
+                             <div style="flex: 1; min-width: 0;">
+                                <div class="settings-row-label" style="margin-bottom: 8px;">Nickname</div>
+                                <input id="profile-nickname-input" class="settings-text-input" type="text" value="${currentUser.displayName || ''}" placeholder="Choose a nickname..." style="width: 100%; margin: 0;">
+                                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">Email: ${currentUser.email}</div>
+                             </div>
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                            <div id="profile-status" style="font-size: 13px;"></div>
+                            <button id="profile-save-btn" class="settings-save-btn">Update Profile</button>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+        `;
+
+        const loginBtn = document.getElementById('profile-login-btn');
+        if (loginBtn) loginBtn.addEventListener('click', handleGoogleSignIn);
+        const logoutBtn = document.getElementById('profile-signout-btn');
+        if (logoutBtn) logoutBtn.addEventListener('click', handleSignOut);
+
+        const saveBtn = document.getElementById('profile-save-btn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => {
+                const nick = document.getElementById('profile-nickname-input').value.trim();
+                updateProfileData(nick);
+            });
+        }
+
+        const picTrigger = document.getElementById('profile-pic-trigger');
+        if (picTrigger) {
+            picTrigger.addEventListener('click', () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let width = img.width;
+                            let height = img.height;
+                            const max = 400; // Smaller for profile pic
+                            if (width > height) {
+                                if (width > max) { height *= max / width; width = max; }
+                            } else {
+                                if (height > max) { width *= max / height; height = max; }
+                            }
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, width, height);
+                            const base64 = canvas.toDataURL('image/jpeg', 0.8);
+                            updateProfileData(undefined, base64);
+                        };
+                        img.src = event.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                };
+                input.click();
+            });
+        }
+    }
+
+    async function updateProfileData(displayName, photoBase64) {
+        if (!currentUser) return;
+        const statusEl = document.getElementById('profile-status');
+        if (statusEl) {
+            statusEl.textContent = 'Saving...';
+            statusEl.style.color = 'var(--accent)';
+        }
+
+        try {
+            const updates = {};
+            if (displayName !== undefined) updates.displayName = displayName;
+            if (photoBase64 !== undefined) updates.photoURL = photoBase64;
+
+            await currentUser.updateProfile(updates);
+            
+            // Re-render
+            renderProfilePanel();
+
+            if (statusEl) {
+                statusEl.textContent = 'Profile updated!';
+                statusEl.style.color = '#4caf50';
+                setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+            }
+        } catch (e) {
+            console.error('[Profile] Failed to update profile', e);
+            if (statusEl) {
+                statusEl.textContent = 'Error: ' + e.message;
+                statusEl.style.color = '#f44336';
+            }
+        }
     }
 
     settingsBtn.addEventListener('click', () => {
@@ -583,16 +760,30 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Metadata Editor Logic ────────────────────────────────────────────────
 
-    function showContextMenu(e, track, sourceBtn) {
+    function showContextMenu(e, track, sourceBtn, canEdit = true, playlistId = null, trackItem = null) {
         e.stopPropagation();
         currentEditingTrack = track;
+        currentPlaylistId = playlistId;
+        currentTrackItem = trackItem;
 
         const rect = sourceBtn.getBoundingClientRect();
         trackContextMenu.style.top = `${rect.bottom + 5}px`;
         trackContextMenu.style.left = `${rect.right - 180}px`;
-        trackContextMenu.classList.remove('hidden');
 
-        // Hide playlist btn if already in a playlist view? No, keep it.
+        // Permission Gating: Only owners can edit info or remove from a specific playlist
+        if (canEdit) {
+            menuEditBtn.classList.remove('hidden');
+            if (playlistId) {
+                menuRemovePlaylistBtn.classList.remove('hidden');
+            } else {
+                menuRemovePlaylistBtn.classList.add('hidden');
+            }
+        } else {
+            menuEditBtn.classList.add('hidden');
+            menuRemovePlaylistBtn.classList.add('hidden');
+        }
+
+        trackContextMenu.classList.remove('hidden');
     }
 
     function hideContextMenu() {
@@ -614,6 +805,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     menuPlaylistBtn.addEventListener('click', (e) => {
         hideContextMenu();
         if (currentEditingTrack) showAddToPlaylistDropdown(currentEditingTrack, e.target);
+    });
+
+    menuRemovePlaylistBtn.addEventListener('click', () => {
+        hideContextMenu();
+        if (currentPlaylistId && currentEditingTrack && currentTrackItem) {
+            removeTrackFromPlaylist(currentPlaylistId, currentEditingTrack.url, currentTrackItem);
+        }
     });
 
     function openEditAlbumModal(albumInfo) {
@@ -818,29 +1016,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         body.innerHTML = `
             <div class="settings-section">
-                <div class="settings-section-title">Profile &amp; Sync</div>
-                <div class="settings-row" style="cursor: default;">
-                    ${currentUser ? `
-                        <div class="settings-profile-info">
-                            <div style="position: relative; width: 48px; height: 48px; flex-shrink: 0;">
-                                <img id="auth-user-photo" src="${currentUser.photoURL || 'icon.svg'}" alt="" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent); background: #1a1a20;">
-                            </div>
-                            <div style="flex: 1; min-width: 0;">
-                                <div id="auth-user-name" class="settings-row-label" style="margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${currentUser.displayName || 'User'}</div>
-                                <div id="auth-user-email" class="settings-row-sub" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${currentUser.email}</div>
-                            </div>
-                            <button id="signout-btn" class="settings-reset-btn">Sign Out</button>
-                        </div>
-                    ` : `
-                        <div id="auth-logged-out-info" style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
-                            <div class="settings-row-sub">Connect to Firebase to enable cross-device sync, cloud playlists, and remote control.</div>
-                            <button id="settings-login-btn" class="settings-save-btn" style="align-self: flex-start;">Connect Cloud</button>
-                        </div>
-                    `}
-                </div>
-            </div>
-
-            <div class="settings-section">
                 <div class="settings-section-title">Network</div>
                 <div class="settings-row">
                     <div class="settings-row-info">
@@ -884,12 +1059,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
             </div>
         `;
-
-        // Re-attach all listeners since innerHTML nuked them
-        const loginBtn = document.getElementById('settings-login-btn');
-        if (loginBtn) loginBtn.addEventListener('click', handleGoogleSignIn);
-        const logoutBtn = document.getElementById('signout-btn');
-        if (logoutBtn) logoutBtn.addEventListener('click', handleSignOut);
 
         // Network section handlers
         document.getElementById('server-url-save-btn').addEventListener('click', () => {
@@ -1535,11 +1704,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, duration);
     }
 
-    function hideOverlays() {
-        hideQueueOverlay();
-        hideImmersiveOverlay();
+    function hideOverlays(except = null) {
+        if (except !== 'queue') hideQueueOverlay();
+        if (except !== 'immersive' && typeof hideImmersiveOverlay === 'function') hideImmersiveOverlay();
         if (typeof hideContextMenu === 'function') hideContextMenu();
-        if (typeof closeSettings === 'function') closeSettings();
+        if (except !== 'settings' && typeof closeSettings === 'function') closeSettings();
+        if (except !== 'profile' && typeof closeProfile === 'function') closeProfile();
     }
 
     // ── Navigation & Persistence Logic ────────────────────────────────────────
@@ -1725,26 +1895,52 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    if (mobileQueueBtn) {
+        mobileQueueBtn.addEventListener('click', () => {
+            toggleQueueView();
+        });
+    }
+
+    if (mobileProfileBtn) {
+        mobileProfileBtn.addEventListener('click', () => {
+            if (profileView.classList.contains('active')) {
+                closeProfile();
+            } else {
+                renderProfilePanel();
+                openProfile();
+            }
+        });
+    }
+
+    const profileCloseBtn = document.getElementById('profile-close-btn');
+    if (profileCloseBtn) profileCloseBtn.addEventListener('click', closeProfile);
+
     // Update active states on view switches
     const mobileNavObserver = new MutationObserver(() => {
-        if (homeView.classList.contains('active')) updateMobileNavActive(mobileHomeBtn);
-        else if (searchView.classList.contains('active')) updateMobileNavActive(mobileSearchBtn);
-        else if (settingsView.classList.contains('active')) updateMobileNavActive(mobileSettingsBtn);
+        if (profileView && profileView.classList.contains('active')) updateMobileNavActive(mobileProfileBtn);
+        else if (settingsView && settingsView.classList.contains('active')) updateMobileNavActive(mobileSettingsBtn);
+        else if (queueView && queueView.classList.contains('active')) updateMobileNavActive(mobileQueueBtn);
+        else if (searchView && searchView.classList.contains('active')) updateMobileNavActive(mobileSearchBtn);
+        else if (homeView && homeView.classList.contains('active')) updateMobileNavActive(mobileHomeBtn);
         else updateMobileNavActive(null);
     });
 
-    [homeView, searchView, settingsView].forEach(view => {
+    [homeView, searchView, queueView, settingsView].forEach(view => {
         if (view) mobileNavObserver.observe(view, { attributes: true, attributeFilter: ['class'] });
     });
 
-    // Global Search Logic
+    // Global Search Logic with Debounce
+    let searchDebounceTimer = null;
     function handleSearchInput(e) {
         const query = e.target.value.toLowerCase().trim();
         // Sync both inputs
         if (searchInput) searchInput.value = e.target.value;
         if (mobileSearchInput) mobileSearchInput.value = e.target.value;
 
-        // Handle search commit on Enter
+        // Clear previous timer
+        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+
+        // Handle search commit on Enter (immediate)
         if (e.key === 'Enter' && query) {
             saveSearchQuery(query);
             renderSearchHistory();
@@ -1756,17 +1952,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderSearchHistory(); // Show history when search is empty
             return;
         }
-        switchToSearchView();
-        renderSearchResults(query);
+
+        // Debounce the actual rendering/querying
+        searchDebounceTimer = setTimeout(() => {
+            switchToSearchView();
+            renderSearchResults(query);
+        }, 500);
     }
 
     if (searchInput) {
         searchInput.addEventListener('input', handleSearchInput);
-        searchInput.addEventListener('keydown', handleSearchInput);
     }
     if (mobileSearchInput) {
         mobileSearchInput.addEventListener('input', handleSearchInput);
-        mobileSearchInput.addEventListener('keydown', handleSearchInput);
     }
 
     function saveSearchQuery(query) {
@@ -1825,7 +2023,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize history visibility
     renderSearchHistory();
 
-    function renderSearchResults(query) {
+    async function renderSearchResults(query) {
         // Collect unique artists that actually have albums/tracks
         const seenArtists = new Set();
         Object.values(albumsData).forEach(album => {
@@ -1835,7 +2033,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         const matchingArtists = Array.from(seenArtists).filter(a => a.toLowerCase().includes(query));
 
-        // Filter playlists
+        // Filter local/own playlists
         const matchingPlaylists = allPlaylists.filter(p => p.name.toLowerCase().includes(query));
 
         // Filter tracks
@@ -1846,12 +2044,76 @@ document.addEventListener('DOMContentLoaded', async () => {
             return title.includes(query) || artist.includes(query) || album.includes(query) || track.filename.toLowerCase().includes(query);
         });
 
-        renderSearchArtists(matchingArtists);
+        renderSearchArtists(matchingArtists.slice(0, 5));
         renderSearchPlaylists(matchingPlaylists);
-        renderSearchTracks(matchingTracks);
+        renderSearchTracks(matchingTracks.slice(0, 20));
 
         const hasResults = matchingArtists.length > 0 || matchingPlaylists.length > 0 || matchingTracks.length > 0;
         if (searchEmptyState) searchEmptyState.classList.toggle('hidden', hasResults);
+
+        // Global Search for Community Playlists (Always available if Firestore is initialized)
+        if (window._fbFS && query.length >= 2) {
+            const lowerQuery = query.toLowerCase();
+            console.log('[Search] Triggering Global Search for:', lowerQuery);
+            try {
+                const snapshot = await window._fbFS.collection('playlists')
+                    .where('name_lowercase', '>=', lowerQuery)
+                    .where('name_lowercase', '<=', lowerQuery + '\uf8ff')
+                    .limit(15)
+                    .get();
+                
+                console.log('[Search] Cloud snapshot size:', snapshot.size);
+                const globalPlaylists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                // Filter out playlists already in your personal library
+                const ownIds = new Set(allPlaylists.map(p => p.id));
+                const uniqueGlobal = globalPlaylists.filter(p => !ownIds.has(p.id));
+                console.log('[Search] Unique global results after filtering:', uniqueGlobal.length);
+                
+                if (uniqueGlobal.length > 0) {
+                    appendGlobalSearchPlaylists(uniqueGlobal);
+                    if (searchEmptyState) searchEmptyState.classList.add('hidden');
+                }
+            } catch (err) {
+                console.error('[Search] Global playlist search failed:', err);
+            }
+        }
+    }
+
+    function appendGlobalSearchPlaylists(playlists) {
+        if (!searchPlaylistList || !searchPlaylistsSection) return;
+        
+        // Remove any previous global results to prevent duplicates during typing
+        const existingGlobals = searchPlaylistList.querySelectorAll('[data-global="true"]');
+        existingGlobals.forEach(el => el.remove());
+
+        // Ensure the section is visible if we have global results
+        searchPlaylistsSection.classList.remove('hidden');
+        
+        // Add a separator or sub-title if needed, but for now just append
+        playlists.forEach(pl => {
+            const row = document.createElement('div');
+            row.className = 'search-result-row';
+            row.dataset.global = "true";
+            
+            let coverHtml = '';
+            if (pl.customCover) {
+                coverHtml = `<img src="${pl.customCover}" class="search-row-cover-img" alt="">`;
+            } else {
+                coverHtml = `<div class="search-row-cover-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div>`;
+            }
+
+            row.innerHTML = `
+                <div class="search-row-cover">${coverHtml}</div>
+                <div class="search-row-info">
+                    <div class="search-row-name">${pl.name}</div>
+                    <div class="search-row-type">Community Playlist &middot; ${pl.userName || 'Shared'} &middot; ${pl.tracks ? pl.tracks.length : 0} tracks</div>
+                </div>
+                <svg class="search-row-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            `;
+            row.addEventListener('click', () => { searchInput.value = ''; switchToHomeView(); openPlaylistView(pl); });
+            searchPlaylistList.appendChild(row);
+        });
     }
 
     function renderSearchArtists(artists) {
@@ -1887,15 +2149,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         playlists.forEach(pl => {
             const row = document.createElement('div');
             row.className = 'search-result-row';
-            const coverTrack = pl.tracks.find(t => t.metadata && t.metadata.hasCover);
-            const miniCover = coverTrack
-                ? `<img src="${serverBaseUrl}/api/cover?path=${encodeURIComponent(coverTrack.relativePath)}" class="search-row-cover-img" alt="">`
-                : `<div class="search-row-cover-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div>`;
+            
+            let coverHtml = '';
+            if (pl.customCover) {
+                coverHtml = `<img src="${pl.customCover}" class="search-row-cover-img" alt="">`;
+            } else {
+                const coverTrack = pl.tracks ? pl.tracks.find(t => t.metadata && t.metadata.hasCover) : null;
+                coverHtml = coverTrack
+                    ? `<img src="${serverBaseUrl}/api/cover?path=${encodeURIComponent(coverTrack.relativePath)}" class="search-row-cover-img" alt="">`
+                    : `<div class="search-row-cover-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div>`;
+            }
+
             row.innerHTML = `
-                <div class="search-row-cover">${miniCover}</div>
+                <div class="search-row-cover">${coverHtml}</div>
                 <div class="search-row-info">
                     <div class="search-row-name">${pl.name}</div>
-                    <div class="search-row-type">Playlist &middot; ${pl.tracks.length} track${pl.tracks.length !== 1 ? 's' : ''}</div>
+                    <div class="search-row-type">Playlist &middot; ${pl.tracks ? pl.tracks.length : 0} track${(pl.tracks && pl.tracks.length !== 1) ? 's' : ''}</div>
                 </div>
                 <svg class="search-row-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
             `;
@@ -2244,7 +2513,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ── Track List Rendering ──────────────────────────────────────────────────
-    function renderTrackList(tracks, container = trackListElement, isPlaylistView = false, playlistId = null) {
+    function renderTrackList(tracks, container = trackListElement, isPlaylistView = false, playlistId = null, canEdit = true) {
         container.innerHTML = '';
 
         tracks.forEach((track, index) => {
@@ -2260,13 +2529,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             const artist = (track.metadata && track.metadata.artist) ? track.metadata.artist : 'Unknown Artist';
 
             // Drag handle (playlist view only)
-            const dragHandleHtml = isPlaylistView ? `
+            const dragHandleHtml = (isPlaylistView && canEdit) ? `
                 <div class="drag-handle" draggable="true">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 4h2v2H9zm4 0h2v2h-2zm-4 7h2v2H9zm4 0h2v2h-2zm-4 7h2v2H9zm4 0h2v2h-2z"/></svg>
                 </div>` : '';
 
             // Remove button (playlist view) vs Add-to-playlist button (other views)
-            const actionBtnHtml = isPlaylistView ? `
+            const actionBtnHtml = (isPlaylistView && canEdit) ? `
                 <button class="remove-from-playlist-btn" title="Remove from playlist">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>` : `
@@ -2348,7 +2617,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Context Menu Handler
             const moreBtn = trackItem.querySelector('.track-item-more-btn');
             if (moreBtn) {
-                moreBtn.addEventListener('click', (e) => showContextMenu(e, track, moreBtn));
+                moreBtn.addEventListener('click', (e) => showContextMenu(e, track, moreBtn, canEdit, playlistId, trackItem));
             }
 
             // Contextual Button Handler
@@ -2388,8 +2657,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             }
 
-            // Drag-to-reorder handlers (playlist view only)
-            if (isPlaylistView) {
+            // Drag-to-reorder handlers (playlist view only, if owner)
+            if (isPlaylistView && canEdit) {
                 trackItem.setAttribute('draggable', 'true');
                 trackItem.dataset.index = index;
                 trackItem.addEventListener('dragstart', (e) => {
@@ -2865,20 +3134,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Playlist System ───────────────────────────────────────────────────────
 
     async function fetchPlaylists() {
+        // Small delay to ensure any recent writes (like new playlist creation) have propagated
+        await new Promise(r => setTimeout(r, 500));
+
+        if (currentUser && window._fbFS) {
+            try {
+                // Fetch ONLY current user's playlists for the Home screen
+                const snapshot = await window._fbFS.collection('playlists')
+                    .where('userId', '==', currentUser.uid)
+                    .orderBy('createdAt', 'desc')
+                    .get();
+                allPlaylists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderPlaylistsStrip();
+                return;
+            } catch (e) {
+                console.error('[Cloud] Failed to fetch playlists from Firebase', e);
+            }
+        }
+
+        // Fallback to local server (Guests or if Firebase is offline)
         try {
             const res = await fetch(`${serverBaseUrl}/api/playlists`);
             if (res.ok) {
                 allPlaylists = await res.json();
             }
         } catch (e) {
-            console.error('Failed to fetch playlists', e);
+            console.error('Failed to fetch playlists from local server', e);
         } finally {
-            // Always render — never leave the strip stuck on "Loading playlists..."
             renderPlaylistsStrip();
         }
     }
 
     async function createPlaylist(name) {
+        if (currentUser && window._fbFS) {
+            try {
+                const docRef = await window._fbFS.collection('playlists').add({
+                    name,
+                    name_lowercase: name.toLowerCase(),
+                    userId: currentUser.uid,
+                    userName: currentUser.displayName || 'Anonymous',
+                    tracks: [],
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                const newPl = { id: docRef.id, name, tracks: [], userId: currentUser.uid, userName: currentUser.displayName };
+                allPlaylists.unshift(newPl);
+                renderPlaylistsStrip();
+                return newPl;
+            } catch (e) {
+                console.error('[Cloud] Failed to create playlist in Firebase', e);
+            }
+        }
+
+        // Fallback to local
         try {
             const res = await fetch(`${serverBaseUrl}/api/playlists`, {
                 method: 'POST',
@@ -2891,20 +3198,46 @@ document.addEventListener('DOMContentLoaded', async () => {
                 renderPlaylistsStrip();
                 return newPl;
             }
-        } catch (e) { console.error('Failed to create playlist', e); }
+        } catch (e) { console.error('Failed to create playlist locally', e); }
         return null;
     }
 
     async function deletePlaylist(id) {
+        if (currentUser && window._fbFS) {
+            try {
+                await window._fbFS.collection('playlists').doc(id).delete();
+                allPlaylists = allPlaylists.filter(p => p.id !== id);
+                renderPlaylistsStrip();
+                switchToHomeView();
+                return;
+            } catch (e) {
+                console.error('[Cloud] Failed to delete playlist from Firebase', e);
+            }
+        }
+
+        // Fallback to local
         try {
             await fetch(`${serverBaseUrl}/api/playlists/${id}`, { method: 'DELETE' });
             allPlaylists = allPlaylists.filter(p => p.id !== id);
             renderPlaylistsStrip();
             switchToHomeView();
-        } catch (e) { console.error('Failed to delete playlist', e); }
+        } catch (e) { console.error('Failed to delete playlist locally', e); }
     }
 
     async function renamePlaylist(id, name) {
+        if (currentUser && window._fbFS) {
+            try {
+                await window._fbFS.collection('playlists').doc(id).update({ name });
+                const idx = allPlaylists.findIndex(p => p.id === id);
+                if (idx !== -1) allPlaylists[idx].name = name;
+                renderPlaylistsStrip();
+                return;
+            } catch (e) {
+                console.error('[Cloud] Failed to rename playlist in Firebase', e);
+            }
+        }
+
+        // Fallback to local
         try {
             const res = await fetch(`${serverBaseUrl}/api/playlists/${id}`, {
                 method: 'PUT',
@@ -2917,7 +3250,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (idx !== -1) allPlaylists[idx] = updated;
                 renderPlaylistsStrip();
             }
-        } catch (e) { console.error('Failed to rename playlist', e); }
+        } catch (e) { console.error('Failed to rename playlist locally', e); }
     }
 
     async function addTrackToPlaylist(playlistId, track) {
@@ -2949,6 +3282,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function updatePlaylistTracks(playlistId, tracks) {
+        if (currentUser && window._fbFS) {
+            try {
+                await window._fbFS.collection('playlists').doc(playlistId).update({ tracks });
+                const idx = allPlaylists.findIndex(p => p.id === playlistId);
+                if (idx !== -1) {
+                    allPlaylists[idx].tracks = tracks;
+                    renderPlaylistsStrip();
+                    // Re-render playlist view if it's currently active
+                    if (playlistView && playlistView.classList.contains('active') && activePlaylistId === playlistId) {
+                        openPlaylistView(allPlaylists[idx], false);
+                    }
+                }
+                return;
+            } catch (e) {
+                console.error('[Cloud] Failed to update tracks in Firebase', e);
+            }
+        }
+
+        // Fallback to local server
         try {
             const res = await fetch(`${serverBaseUrl}/api/playlists/${playlistId}`, {
                 method: 'PUT',
@@ -2962,14 +3314,35 @@ document.addEventListener('DOMContentLoaded', async () => {
                 renderPlaylistsStrip();
                 // Re-render playlist view if it's currently active
                 if (playlistView && playlistView.classList.contains('active') && activePlaylistId === playlistId) {
-                    openPlaylistView(allPlaylists[idx]);
+                    openPlaylistView(allPlaylists[idx], false);
                 }
             }
-        } catch (e) { console.error('Failed to update playlist tracks', e); }
+        } catch (e) { console.error('Failed to update playlist tracks locally', e); }
+    }
+
+    async function updatePlaylistCover(playlistId, base64) {
+        if (currentUser && window._fbFS) {
+            try {
+                await window._fbFS.collection('playlists').doc(playlistId).update({ customCover: base64 });
+                const idx = allPlaylists.findIndex(p => p.id === playlistId);
+                if (idx !== -1) {
+                    allPlaylists[idx].customCover = base64;
+                    renderPlaylistsStrip();
+                    if (activePlaylistId === playlistId) {
+                        openPlaylistView(allPlaylists[idx], false);
+                    }
+                }
+            } catch (e) {
+                console.error('[Cloud] Failed to update cover in Firebase', e);
+            }
+        }
     }
 
     // Build a 2×2 collage from first 4 cover-bearing tracks in the playlist
     function buildCollageHtml(playlist) {
+        if (playlist.customCover) {
+            return `<div class="playlist-collage custom-cover"><img src="${playlist.customCover}" alt="" style="width:100%; height:100%; object-fit:cover;"></div>`;
+        }
         const coverTracks = playlist.tracks.filter(t => t.metadata && t.metadata.hasCover).slice(0, 4);
         let cells = '';
         for (let i = 0; i < 4; i++) {
@@ -3019,9 +3392,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         allPlaylists.forEach(pl => {
             const card = document.createElement('div');
             card.className = 'playlist-card';
+            const isOwn = currentUser && pl.userId === currentUser.uid;
+            
             card.innerHTML = `
                 <div class="card-art-wrapper">
                     ${buildCollageHtml(pl)}
+                    ${!isOwn ? '<div class="community-badge">Community</div>' : ''}
                     ${CARD_PLAY_BTN_HTML}
                 </div>
                 <div class="playlist-card-title" title="${pl.name}">${pl.name}</div>
@@ -3046,59 +3422,187 @@ document.addEventListener('DOMContentLoaded', async () => {
         activePlaylistId = playlist.id;
         switchToPlaylistView(false);
 
-        // Find first cover for background
-        const firstCoverTrack = playlist.tracks.find(t => t.metadata && t.metadata.hasCover);
-        if (firstCoverTrack) {
-            const url = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(firstCoverTrack.relativePath)}`;
-            if (playlistView) playlistView.style.setProperty('--view-bg-image', `url("${url}")`);
-        } else {
-            if (playlistView) playlistView.style.setProperty('--view-bg-image', 'none');
-        }
+        const isOwnPlaylist = currentUser && playlist.userId === currentUser.uid;
 
-        const collage = buildCollageHtml(playlist);
+        // Background logic: Custom cover takes priority, then first track cover
+        let bgUrl = 'none';
+        if (playlist.customCover) {
+            bgUrl = `url("${playlist.customCover}")`;
+        } else {
+            const firstCoverTrack = playlist.tracks.find(t => t.metadata && t.metadata.hasCover);
+            if (firstCoverTrack) {
+                const url = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(firstCoverTrack.relativePath)}`;
+                bgUrl = `url("${url}")`;
+            }
+        }
+        if (playlistView) playlistView.style.setProperty('--view-bg-image', bgUrl);
+
         const totalDuration = playlist.tracks.reduce((sum, t) => sum + (t.metadata && t.metadata.duration ? t.metadata.duration : 0), 0);
         const durationStr = totalDuration > 0 ? ` · ${formatHeroDuration(Math.round(totalDuration))}` : '';
+        const songCountStr = `${playlist.tracks.length} track${playlist.tracks.length !== 1 ? 's' : ''}`;
+
+        // Match Album View Structure
+        let coverHtml = '';
+        const coverTooltip = isOwnPlaylist ? 'title="Change Cover"' : '';
+        const overlayHtml = isOwnPlaylist ? `
+            <div class="edit-cover-overlay">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+            </div>
+        ` : '';
+
+        if (playlist.customCover) {
+            coverHtml = `
+                <div class="playlist-art-interactive album-hero-cover" ${coverTooltip}>
+                    <img src="${playlist.customCover}" style="width:100%; height:100%; object-fit:cover;">
+                    ${overlayHtml}
+                    ${!isOwnPlaylist ? '<div class="community-badge">Community</div>' : ''}
+                </div>
+            `;
+        } else {
+            const collage = buildCollageHtml(playlist);
+            coverHtml = `
+                <div class="playlist-art-interactive album-hero-cover" ${coverTooltip}>
+                    ${collage}
+                    ${overlayHtml}
+                    ${!isOwnPlaylist ? '<div class="community-badge">Community</div>' : ''}
+                </div>
+            `;
+        }
 
         playlistHeroDiv.innerHTML = `
-            ${collage}
+            ${coverHtml}
             <div class="album-hero-info">
                 <div class="album-hero-label">Playlist</div>
-                <input class="playlist-title-editable album-hero-title" value="${playlist.name}" spellcheck="false">
-                <div class="album-hero-meta">${playlist.tracks.length} track${playlist.tracks.length !== 1 ? 's' : ''}${durationStr}</div>
-                <div style="display:flex; gap: 12px; align-items: center; margin-top: 24px;">
+                ${isOwnPlaylist ? 
+                    `<input class="playlist-title-editable album-hero-title" value="${playlist.name}" spellcheck="false">` :
+                    `<div class="album-hero-title">${playlist.name}</div>`
+                }
+                <div class="album-hero-meta">
+                    <img class="artist-avatar" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIwIDIxdi0yYTRgMCAwIDAtNC00SDhhNCg0IDAgMCAwLTQgNHYyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSI3IiByPSI0Ii8+PC9zdmc+" alt="">
+                    <strong>${playlist.userName || (isOwnPlaylist ? (currentUser.displayName || 'You') : 'Shared')}</strong> · ${songCountStr}${durationStr}
+                </div>
+                <div class="album-hero-actions">
                     <button class="icon-button play-btn playlist-play-btn" title="Play All" style="width:56px;height:56px;box-shadow:0 8px 16px rgba(0,0,0,0.4);">
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
                     </button>
-                    <button class="delete-playlist-btn">Delete Playlist</button>
+                    ${isOwnPlaylist ? `
+                        <button class="secondary-action-btn delete-playlist-btn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            Delete
+                        </button>
+                    ` : `
+                        <button class="secondary-action-btn save-to-library-btn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                            Save to Library
+                        </button>
+                    `}
                 </div>
             </div>
         `;
 
-        // Inline rename
-        const titleInput = playlistHeroDiv.querySelector('.playlist-title-editable');
-        titleInput.addEventListener('blur', () => {
-            const newName = titleInput.value.trim();
-            if (newName && newName !== playlist.name) {
-                playlist.name = newName;
-                renamePlaylist(playlist.id, newName);
-            }
-        });
-        titleInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') titleInput.blur(); });
+        if (isOwnPlaylist) {
+            // Handle cover change
+            playlistHeroDiv.querySelector('.playlist-art-interactive').addEventListener('click', () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    const reader = new FileReader();
+                    reader.onload = async (re) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let width = img.width;
+                            let height = img.height;
+                            const maxSide = 800;
+                            if (width > height) {
+                                if (width > maxSide) { height *= maxSide / width; width = maxSide; }
+                            } else {
+                                if (height > maxSide) { width *= maxSide / height; height = maxSide; }
+                            }
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, width, height);
+                            const base64 = canvas.toDataURL('image/jpeg', 0.8);
+                            updatePlaylistCover(playlist.id, base64);
+                        };
+                        img.src = re.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                };
+                input.click();
+            });
+        }
+
+        if (isOwnPlaylist) {
+            // Inline rename
+            const titleInput = playlistHeroDiv.querySelector('.playlist-title-editable');
+            titleInput.addEventListener('blur', () => {
+                const newName = titleInput.value.trim();
+                if (newName && newName !== playlist.name) {
+                    playlist.name = newName;
+                    renamePlaylist(playlist.id, newName);
+                }
+            });
+            titleInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') titleInput.blur(); });
+        }
 
         // Play all
         playlistHeroDiv.querySelector('.playlist-play-btn').addEventListener('click', () => {
-            if (playlist.tracks.length === 0) return;
+            if (!playlist.tracks || playlist.tracks.length === 0) return;
             currentPlaylistContext = playlist.tracks;
             if (isShuffleActive) unplayedIndices = playlist.tracks.map((_, i) => i);
             commitTrackChange(0);
         });
 
-        // Delete
-        playlistHeroDiv.querySelector('.delete-playlist-btn').addEventListener('click', () => {
-            if (confirm(`Delete "${playlist.name}"?`)) deletePlaylist(playlist.id);
-        });
+        if (isOwnPlaylist) {
+            // Delete
+            playlistHeroDiv.querySelector('.delete-playlist-btn').addEventListener('click', () => {
+                if (confirm(`Delete "${playlist.name}"?`)) {
+                    deletePlaylist(playlist.id);
+                    switchToHomeView();
+                }
+            });
+        } else {
+            // Save to Library
+            const saveBtn = playlistHeroDiv.querySelector('.save-to-library-btn');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', async () => {
+                    if (!currentUser) {
+                        alert('Please sign in to save playlists.');
+                        return;
+                    }
+                    saveBtn.disabled = true;
+                    saveBtn.textContent = 'Saving...';
+                    
+                    try {
+                        const newName = `${playlist.name} (Shared)`;
+                        const newPl = await createPlaylist(newName);
+                        if (newPl && playlist.tracks) {
+                            await updatePlaylistTracks(newPl.id, playlist.tracks);
+                            if (playlist.customCover) {
+                                await updatePlaylistCover(newPl.id, playlist.customCover);
+                            }
+                        }
+                        saveBtn.textContent = 'Saved to Library!';
+                        setTimeout(() => {
+                            saveBtn.disabled = false;
+                            saveBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg> Save to Library`;
+                        }, 2000);
+                    } catch (e) {
+                        console.error('Failed to clone playlist', e);
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = 'Error saving';
+                    }
+                });
+            }
+        }
 
-        renderTrackList(playlist.tracks, playlistTrackList, true, playlist.id);
+        renderTrackList(playlist.tracks, playlistTrackList, true, playlist.id, isOwnPlaylist);
     }
 
     // ── Add-to-playlist dropdown ──────────────────────────────────────────────
@@ -3119,7 +3623,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         queueDiv.className = 'dropdown-divider';
         addToPlaylistDropdown.appendChild(queueDiv);
 
-        allPlaylists.forEach(pl => {
+        const ownPlaylists = allPlaylists.filter(pl => currentUser && pl.userId === currentUser.uid);
+        
+        ownPlaylists.forEach(pl => {
             const item = document.createElement('div');
             item.className = 'dropdown-item';
             item.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg> ${pl.name}`;
@@ -3130,7 +3636,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             addToPlaylistDropdown.appendChild(item);
         });
 
-        if (allPlaylists.length > 0) {
+        if (ownPlaylists.length > 0) {
             const divider = document.createElement('div');
             divider.className = 'dropdown-divider';
             addToPlaylistDropdown.appendChild(divider);
@@ -3179,8 +3685,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const trackToAdd = pendingAddTrack; // capture before modal close nulls it
         closeCreatePlaylistModal();
         const newPl = await createPlaylist(name);
-        if (newPl && trackToAdd) {
-            await addTrackToPlaylist(newPl.id, trackToAdd);
+        
+        // Small delay to ensure Firestore propagation before we navigate/fetch
+        await new Promise(r => setTimeout(r, 800));
+
+        if (newPl) {
+            if (trackToAdd) {
+                await addTrackToPlaylist(newPl.id, trackToAdd);
+            }
+            // Navigate to the newly created playlist
+            const pl = allPlaylists.find(p => p.id === newPl.id) || newPl;
+            openPlaylistView(pl);
         }
     });
 
@@ -3502,7 +4017,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } else if (activeView.id === 'playlist-view') {
             const pl = allPlaylists.find(p => p.id === activePlaylistId);
-            if (pl) renderTrackList(pl.tracks, playlistTrackList, true, pl.id);
+            if (pl) {
+                const isOwn = currentUser && pl.userId === currentUser.uid;
+                renderTrackList(pl.tracks, playlistTrackList, true, pl.id, isOwn);
+            }
         } else if (activeView.id === 'search-view') {
             const query = searchInput.value || (mobileSearchInput ? mobileSearchInput.value : '');
             if (query) renderSearchResults(query);
