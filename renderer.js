@@ -17,15 +17,11 @@ localStorage.setItem('deviceId', deviceId);
 document.addEventListener('DOMContentLoaded', async () => {
     // Views
     const homeView = document.getElementById('home-view');
-    const allAlbumsView = document.getElementById('all-albums-view');
-    const allArtistsView = document.getElementById('all-artists-view');
     const albumView = document.getElementById('album-view');
     const searchView = document.getElementById('search-view');
     const artistView = document.getElementById('artist-view');
 
     // Elements
-    const albumGrid = document.getElementById('album-grid');
-    const allArtistsGrid = document.getElementById('all-artists-grid');
     const backBtn = document.getElementById('back-btn');
     const albumHeroDiv = document.getElementById('album-hero');
 
@@ -102,6 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Settings Elements
     const settingsBtn = document.getElementById('settings-btn');
+    const profileBtn = document.getElementById('profile-btn');
     const settingsView = document.getElementById('settings-view');
     const profileView = document.getElementById('profile-view');
     const profileBody = profileView ? profileView.querySelector('.profile-body') : null;
@@ -258,6 +255,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const menuEditBtn = document.getElementById('menu-edit-btn');
     const menuPlaylistBtn = document.getElementById('menu-playlist-btn');
     const menuRemovePlaylistBtn = document.getElementById('menu-remove-playlist-btn');
+    const menuGoArtistBtn = document.getElementById('menu-go-artist-btn');
+    const menuGoAlbumBtn = document.getElementById('menu-go-album-btn');
     let currentEditingTrack = null;
     let currentEditingAlbum = null;
     let currentPlaylistId = null;
@@ -340,8 +339,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             targetEl = elementNode;
         } else if (elementNode.classList && elementNode.classList.contains('artist-hero-avatar')) {
             targetEl = elementNode;
+        } else if (elementNode.classList && elementNode.classList.contains('artist-avatar')) {
+            targetEl = elementNode;
         } else {
-            targetEl = elementNode.querySelector('.artist-card-art');
+            targetEl = elementNode.querySelector('.artist-card-art') || elementNode.querySelector('.artist-avatar');
         }
 
         if (!targetEl) return;
@@ -673,10 +674,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (push) navigateTo('profile');
         hideOverlays('profile');
         profileView.classList.add('active');
+        if (profileBtn) profileBtn.classList.add('settings-btn-active');
     }
 
     function closeProfile() {
         profileView.classList.remove('active');
+        if (profileBtn) profileBtn.classList.remove('settings-btn-active');
     }
 
     // ── Profile Panel Renderer ────────────────────────────────────────────────
@@ -824,6 +827,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    if (profileBtn) {
+        profileBtn.addEventListener('click', () => {
+            if (profileView.classList.contains('active')) {
+                closeProfile();
+            } else {
+                renderProfilePanel();
+                openProfile();
+            }
+        });
+    }
+
     settingsCloseBtn.addEventListener('click', closeSettings);
 
     // ── Metadata Editor Logic ────────────────────────────────────────────────
@@ -879,6 +893,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         hideContextMenu();
         if (currentPlaylistId && currentEditingTrack && currentTrackItem) {
             removeTrackFromPlaylist(currentPlaylistId, currentEditingTrack.url, currentTrackItem);
+        }
+    });
+
+    menuGoArtistBtn.addEventListener('click', () => {
+        hideContextMenu();
+        if (currentEditingTrack) {
+            const artistName = (currentEditingTrack.metadata && currentEditingTrack.metadata.artist) ? currentEditingTrack.metadata.artist : 'Unknown Artist';
+            const cleanArtist = artistName.includes(';') ? artistName.split(';')[0].trim() : artistName;
+            openArtistView(cleanArtist);
+        }
+    });
+
+    menuGoAlbumBtn.addEventListener('click', () => {
+        hideContextMenu();
+        if (currentEditingTrack) {
+            const albumName = (currentEditingTrack.metadata && currentEditingTrack.metadata.album) ? currentEditingTrack.metadata.album : 'Unknown Album';
+            const albumInfo = Object.values(albumsData).find(a => a.name === albumName);
+            if (albumInfo) {
+                openAlbumView(albumInfo);
+            } else {
+                // Fallback: search for tracks with this album name if not in albumsData
+                console.warn('Album info not found in albumsData, falling back to manual search');
+            }
         }
     });
 
@@ -1126,6 +1163,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ` : '<div class="local-sources-empty">No local sources added yet.</div>'}
                 </div>
             </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Cloud Library</div>
+                <div class="settings-row">
+                    <div class="settings-row-info">
+                        <div class="settings-row-label">Upload to Server</div>
+                        <div class="settings-row-sub">Add music directly to your Tailscale server. Files will be accessible on all your devices.</div>
+                    </div>
+                    <div class="settings-input-group">
+                        <button id="cloud-upload-btn" class="settings-save-btn">Select Files</button>
+                        <input type="file" id="cloud-upload-input" multiple accept="audio/*" style="display: none;">
+                    </div>
+                    <div id="cloud-upload-status" class="local-path-status" style="margin-top: 10px;"></div>
+                </div>
+            </div>
         `;
 
         // Network section handlers
@@ -1215,10 +1267,65 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const paths = getLocalMusicPaths();
                 paths.splice(idx, 1);
                 saveLocalMusicPaths(paths);
-                await initializeMusicLibrary();
+                        await initializeMusicLibrary();
                 renderSettingsPanel();
             });
         });
+
+        // Cloud Upload handlers
+        const uploadBtn = document.getElementById('cloud-upload-btn');
+        const uploadInput = document.getElementById('cloud-upload-input');
+        const uploadStatus = document.getElementById('cloud-upload-status');
+
+        if (uploadBtn && uploadInput) {
+            uploadBtn.addEventListener('click', () => uploadInput.click());
+            uploadInput.addEventListener('change', async (e) => {
+                const files = Array.from(e.target.files);
+                if (files.length === 0) return;
+
+                uploadBtn.disabled = true;
+                uploadBtn.textContent = 'Uploading...';
+                let successCount = 0;
+                let errorCount = 0;
+
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    uploadStatus.textContent = `Uploading ${i + 1}/${files.length}: ${file.name}`;
+                    
+                    try {
+                        const response = await fetch(`${serverBaseUrl}/api/upload`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'audio/mpeg',
+                                'x-filename': file.name
+                            },
+                            body: file
+                        });
+
+                        if (response.ok) {
+                            successCount++;
+                        } else {
+                            const err = await response.json();
+                            console.error('Upload failed for', file.name, err);
+                            errorCount++;
+                        }
+                    } catch (err) {
+                        console.error('Upload error for', file.name, err);
+                        errorCount++;
+                    }
+                }
+
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Select Files';
+                uploadStatus.textContent = `Done! ${successCount} uploaded, ${errorCount} failed.`;
+                uploadStatus.style.color = errorCount > 0 ? '#f44336' : '#4caf50';
+                
+                if (successCount > 0) {
+                    await initializeMusicLibrary();
+                    renderHomeGrid();
+                }
+            });
+        }
     }
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -1793,8 +1900,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderState(viewId, stateData) {
         switch (viewId) {
             case 'home': switchToHomeView(false); break;
-            case 'allAlbums': switchToAllAlbumsView(false); break;
-            case 'allArtists': switchToAllArtistsView(false); break;
             case 'search':
                 if (stateData.query !== undefined) {
                     if (searchInput) searchInput.value = stateData.query;
@@ -1813,6 +1918,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (stateData.playlist) openPlaylistView(stateData.playlist, false);
                 break;
             case 'settings': openSettings(false); break;
+            case 'profile':
+                renderProfilePanel();
+                openProfile(false);
+                break;
             case 'queue': showQueueOverlay(); break;
             case 'immersive': showImmersiveOverlay(); break;
         }
@@ -1833,36 +1942,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         albumView.classList.remove('active'); albumView.classList.add('hidden');
         searchView.classList.remove('active'); searchView.classList.add('hidden');
         artistView.classList.remove('active'); artistView.classList.add('hidden');
-        allAlbumsView.classList.remove('active'); allAlbumsView.classList.add('hidden');
-        allArtistsView.classList.remove('active'); allArtistsView.classList.add('hidden');
         if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
 
         homeView.classList.remove('hidden'); homeView.classList.add('active');
     }
 
-    function switchToAllAlbumsView(push = true) {
-        if (push) navigateTo('allAlbums');
-        hideOverlays();
-        albumView.classList.remove('active'); albumView.classList.add('hidden');
-        searchView.classList.remove('active'); searchView.classList.add('hidden');
-        artistView.classList.remove('active'); artistView.classList.add('hidden');
-        allArtistsView.classList.remove('active'); allArtistsView.classList.add('hidden');
-        homeView.classList.remove('active'); homeView.classList.add('hidden');
 
-        allAlbumsView.classList.remove('hidden'); allAlbumsView.classList.add('active');
-    }
-
-    function switchToAllArtistsView(push = true) {
-        if (push) navigateTo('allArtists');
-        hideOverlays();
-        albumView.classList.remove('active'); albumView.classList.add('hidden');
-        searchView.classList.remove('active'); searchView.classList.add('hidden');
-        artistView.classList.remove('active'); artistView.classList.add('hidden');
-        allAlbumsView.classList.remove('active'); allAlbumsView.classList.add('hidden');
-        homeView.classList.remove('active'); homeView.classList.add('hidden');
-
-        allArtistsView.classList.remove('hidden'); allArtistsView.classList.add('active');
-    }
 
     function switchToSearchView(push = true) {
         if (push) navigateTo('search', { query: searchInput.value || (mobileSearchInput ? mobileSearchInput.value : '') });
@@ -1870,8 +1955,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         albumView.classList.remove('active'); albumView.classList.add('hidden');
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         artistView.classList.remove('active'); artistView.classList.add('hidden');
-        allAlbumsView.classList.remove('active'); allAlbumsView.classList.add('hidden');
-        allArtistsView.classList.remove('active'); allArtistsView.classList.add('hidden');
+        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
+
 
         searchView.classList.remove('hidden'); searchView.classList.add('active');
     }
@@ -1883,8 +1968,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         searchView.classList.remove('active'); searchView.classList.add('hidden');
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         artistView.classList.remove('active'); artistView.classList.add('hidden');
-        allAlbumsView.classList.remove('active'); allAlbumsView.classList.add('hidden');
-        allArtistsView.classList.remove('active'); allArtistsView.classList.add('hidden');
+        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
+
 
         albumView.classList.remove('hidden'); albumView.classList.add('active');
     }
@@ -1895,8 +1980,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         searchView.classList.remove('active'); searchView.classList.add('hidden');
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         albumView.classList.remove('active'); albumView.classList.add('hidden');
-        allAlbumsView.classList.remove('active'); allAlbumsView.classList.add('hidden');
-        allArtistsView.classList.remove('active'); allArtistsView.classList.add('hidden');
         if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
 
         artistView.classList.remove('hidden'); artistView.classList.add('active');
@@ -1909,8 +1992,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         albumView.classList.remove('active'); albumView.classList.add('hidden');
         artistView.classList.remove('active'); artistView.classList.add('hidden');
-        allAlbumsView.classList.remove('active'); allAlbumsView.classList.add('hidden');
-        allArtistsView.classList.remove('active'); allArtistsView.classList.add('hidden');
+
         playlistView.classList.remove('hidden'); playlistView.classList.add('active');
     }
 
@@ -2332,7 +2414,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function initializeMusicLibrary() {
-        albumGrid.innerHTML = '<div class="loading">Loading...</div>';
         try {
             const serverRes = await fetch(`${serverBaseUrl}/api/audio`);
             const serverTracks = serverRes.ok ? await serverRes.json() : [];
@@ -2344,14 +2425,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const merged = deduplicateTracks(serverTracks, localTracks);
 
             if (merged.length === 0) {
-                albumGrid.innerHTML = '<div class="empty-state">No audio files found.</div>';
                 return;
             }
             allTracks = merged;
             processAlbums(merged);
         } catch (err) {
             console.error('Error loading music library:', err);
-            albumGrid.innerHTML = `<div class="error-state" style="color:red;">Error: ${err.message}</div>`;
         }
     }
     // ───────────────────────────────────────────────────────────
@@ -2427,15 +2506,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function renderHomeGrid() {
         const recentList = document.getElementById('recent-album-list');
-        const gridContainer = document.getElementById('album-grid');
-
-        if (!recentList || !gridContainer) {
-            // Unrecoverable state on UI mismatch without throwing hard fault
-            return;
-        }
-
         recentList.innerHTML = '';
-        gridContainer.innerHTML = '';
 
         const albumsArray = Object.values(albumsData);
         // Sort descending by when file was added to library
@@ -2447,34 +2518,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             recentList.appendChild(createAlbumCard(albumInfo));
         });
 
-        if (albumsArray.length > 8) {
-            const allBtnContainer = document.createElement('div');
-            allBtnContainer.className = 'album-card';
-            allBtnContainer.style.display = 'flex';
-            allBtnContainer.style.flexDirection = 'column';
-            allBtnContainer.style.justifyContent = 'center';
-            allBtnContainer.style.alignItems = 'center';
-            allBtnContainer.style.width = '200px';
-            allBtnContainer.style.background = 'rgba(255,255,255,0.05)';
-            allBtnContainer.style.opacity = '0.7';
-            allBtnContainer.style.transition = 'all 0.2s ease';
-            allBtnContainer.style.cursor = 'pointer';
-            allBtnContainer.innerHTML = `
-                <div style="font-size: 18px; font-weight: 800; color: white;">All Albums</div>
-                <div style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">Explore ${albumsArray.length} items</div>
-            `;
-            allBtnContainer.addEventListener('mouseover', () => allBtnContainer.style.opacity = '1');
-            allBtnContainer.addEventListener('mouseout', () => allBtnContainer.style.opacity = '0.7');
-            allBtnContainer.addEventListener('click', () => {
-                switchToAllAlbumsView();
-            });
-            recentList.appendChild(allBtnContainer);
-        }
 
-        // Render full unfiltered album set
-        albumsArray.forEach(albumInfo => {
-            gridContainer.appendChild(createAlbumCard(albumInfo));
-        });
 
         if (typeof renderRecentArtists === 'function') {
             renderRecentArtists();
@@ -2530,10 +2574,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="album-hero-label">Album</div>
                 <div class="album-hero-title" title="${albumInfo.name}">${albumInfo.name}</div>
                 <div class="album-hero-meta">
-                    <img class="artist-avatar" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIwIDIxdi0yYTRgMCAwIDAtNC00SDhhNCg0IDAgMCAwLTQgNHYyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSI3IiByPSI0Ii8+PC9zdmc+" alt="">
+                    <div class="artist-avatar album-hero-artist-avatar" style="display: inline-block; vertical-align: middle;"></div>
                     <strong class="artist-link" style="cursor: pointer;">${albumInfo.artist}</strong> • ${yearStr} • ${songCountStr}${durationStr}
                 </div>
                 <div class="album-hero-actions">
+        `;
+
+        // Fetch and apply artist image for the hero avatar
+        const albumAvatarNode = albumHeroDiv.querySelector('.album-hero-artist-avatar');
+        if (albumAvatarNode && typeof fetchAndApplyArtistImage === 'function') {
+            fetchAndApplyArtistImage(albumInfo.artist, albumAvatarNode, false);
+        }
+
+        // Add actions back
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'album-hero-actions';
+        actionsDiv.innerHTML = `
                     <button class="icon-button play-btn album-play-btn" title="Play All" style="width: 56px; height: 56px; box-shadow: 0 8px 16px rgba(0,0,0,0.4);">
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
                     </button>
@@ -2547,9 +2603,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                         <span>Edit Info</span>
                     </button>
-                </div>
-            </div>
         `;
+        albumHeroDiv.querySelector('.album-hero-info').appendChild(actionsDiv);
 
         const albumPlayBtn = albumHeroDiv.querySelector('.album-play-btn');
 
@@ -3243,6 +3298,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     name_lowercase: name.toLowerCase(),
                     userId: currentUser.uid,
                     userName: currentUser.displayName || 'Anonymous',
+                    userPhotoURL: currentUser.photoURL || null,
                     tracks: [],
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
@@ -3548,7 +3604,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     `<div class="album-hero-title">${playlist.name}</div>`
                 }
                 <div class="album-hero-meta">
-                    <img class="artist-avatar" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIwIDIxdi0yYTRgMCAwIDAtNC00SDhhNCg0IDAgMCAwLTQgNHYyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSI3IiByPSI0Ii8+PC9zdmc+" alt="">
+                    ${(playlist.userPhotoURL || (isOwnPlaylist && currentUser.photoURL)) ? 
+                        `<img class="artist-avatar" src="${playlist.userPhotoURL || currentUser.photoURL}" alt="">` :
+                        `<img class="artist-avatar" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIwIDIxdi0yYTRgMCAwIDAtNC00SDhhNCg0IDAgMCAwLTQgNHYyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSI3IiByPSI0Ii8+PC9zdmc+" alt="">`
+                    }
                     <strong>${playlist.userName || (isOwnPlaylist ? (currentUser.displayName || 'You') : 'Shared')}</strong> · ${songCountStr}${durationStr}
                 </div>
                 <div class="album-hero-actions">
@@ -3824,57 +3883,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 fetchAndApplyArtistImage(artistName, card, false);
             }
         });
-
-        const allBtnContainer = document.createElement('div');
-        allBtnContainer.className = 'artist-card';
-        allBtnContainer.style.display = 'flex';
-        allBtnContainer.style.justifyContent = 'center';
-        allBtnContainer.style.background = 'rgba(255,255,255,0.05)';
-        allBtnContainer.style.opacity = '0.7';
-        allBtnContainer.style.transition = 'all 0.2s ease';
-        allBtnContainer.innerHTML = `
-            <div style="font-size: 18px; font-weight: 800; color: white;">All Artists</div>
-        `;
-        allBtnContainer.addEventListener('mouseover', () => allBtnContainer.style.opacity = '1');
-        allBtnContainer.addEventListener('mouseout', () => allBtnContainer.style.opacity = '0.7');
-        allBtnContainer.addEventListener('click', () => {
-            switchToAllArtistsView();
-        });
-        recentArtistList.appendChild(allBtnContainer);
-
-        renderAllArtistsGrid();
     }
 
-    function renderAllArtistsGrid() {
-        if (!allArtistsGrid || !albumsData) return;
 
-        allArtistsGrid.innerHTML = '';
-        const uniqueArtists = new Set();
-        Object.values(albumsData).forEach(album => {
-            if (album.artist && album.artist !== 'Unknown Artist') {
-                const aName = album.artist.includes(';') ? album.artist.split(';')[0].trim() : album.artist;
-                uniqueArtists.add(aName);
-            }
-        });
-
-        const sortedArtists = Array.from(uniqueArtists).sort();
-
-        sortedArtists.forEach(artistName => {
-            const card = document.createElement('div');
-            card.className = 'artist-card';
-            card.innerHTML = `
-                <div class="artist-card-art"></div>
-                <div class="artist-card-title" title="${artistName}">${artistName}</div>
-                <div class="artist-card-label">Artist</div>
-            `;
-            card.addEventListener('click', () => openArtistView(artistName));
-            allArtistsGrid.appendChild(card);
-
-            if (typeof fetchAndApplyArtistImage === 'function') {
-                fetchAndApplyArtistImage(artistName, card, false);
-            }
-        });
-    }
 
     async function playTrack(track, title, artist) {
         if (window.electronAPI) {

@@ -56,6 +56,12 @@
 
         <div class="header-right">
             <div class="header-right-inner">
+                <button id="profile-btn" class="nav-circle-btn" title="Profile">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                </button>
                 <button id="settings-btn" class="nav-circle-btn" title="Settings">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="3"></circle>
@@ -102,21 +108,6 @@
             </div>
         </div>
 
-        <!-- All Albums View -->
-        <div id="all-albums-view" class="view hidden">
-            <h2 class="section-heading" style="margin-bottom: 24px; font-size: 28px; font-weight: 800; color: white;">All Albums</h2>
-            <div id="album-grid" class="album-grid">
-                <div class="loading">Loading albums...</div>
-            </div>
-        </div>
-
-        <!-- All Artists View -->
-        <div id="all-artists-view" class="view hidden">
-            <h2 class="section-heading" style="margin-bottom: 24px; font-size: 28px; font-weight: 800; color: white;">All Artists</h2>
-            <div id="all-artists-grid" class="album-grid">
-                <div class="loading">Loading artists...</div>
-            </div>
-        </div>
 
         <!-- Playlist View -->
         <div id="playlist-view" class="view hidden">
@@ -366,7 +357,7 @@
                 </svg>
             </button>
         </div>
-        <div class="profile-body">
+        <div class="profile-body settings-body">
             <!-- Profile content injected by JS -->
         </div>
     </div>
@@ -541,6 +532,15 @@
         <button id="menu-remove-playlist-btn" class="menu-item hidden">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             Remove from Playlist
+        </button>
+        <div class="menu-divider"></div>
+        <button id="menu-go-artist-btn" class="menu-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            Go to Artist
+        </button>
+        <button id="menu-go-album-btn" class="menu-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
+            Go to Album
         </button>
     </div>
 
