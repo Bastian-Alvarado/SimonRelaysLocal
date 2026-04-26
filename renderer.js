@@ -115,6 +115,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentUser = null;
     let likedTracks = new Set();
     let allLikedTracksCache = [];
+    let historyTracks = [];
 
     // ── Firebase Configuration ───────────────────────────────────────────────
     /**
@@ -169,6 +170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Trigger fetch from Firebase
                 fetchPlaylists();
                 fetchLikes();
+                fetchHistory();
 
                 // Always update panels if they are currently visible
                 if (settingsView && settingsView.classList.contains('active')) renderSettingsPanel();
@@ -209,9 +211,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const mobileHomeBtn = document.getElementById('mobile-home-btn');
     const mobileSearchBtn = document.getElementById('mobile-search-btn');
     const mobileQueueBtn = document.getElementById('mobile-queue-btn');
-    const mobileSettingsBtn = document.getElementById('mobile-settings-btn');
-    const mobileProfileBtn = document.getElementById('mobile-profile-btn');
-    const mobileNavItems = [mobileHomeBtn, mobileSearchBtn, mobileQueueBtn, mobileSettingsBtn, mobileProfileBtn];
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    const mobileNavItems = [mobileHomeBtn, mobileSearchBtn, mobileQueueBtn, mobileMenuBtn];
     const mobileSearchInput = document.getElementById('mobile-search-input');
 
     // Metadata Edit Elements
@@ -286,6 +287,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (btn) btn.classList.remove('active');
         });
         if (activeBtn) activeBtn.classList.add('active');
+    }
+
+    function closeSidebar() {
+        if (desktopSidebar) desktopSidebar.classList.remove('active');
+        if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+        if (mobileMenuBtn) mobileMenuBtn.classList.remove('active');
     }
 
     // Window Controls
@@ -575,6 +582,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    const immersiveLikeBtn = document.getElementById('immersive-like-btn');
+    if (immersiveLikeBtn) {
+        immersiveLikeBtn.addEventListener('click', async () => {
+            await toggleLike();
+        });
+    }
+
     const immersiveAddToPlaylistBtn = document.getElementById('immersive-add-to-playlist-btn');
     if (immersiveAddToPlaylistBtn) {
         immersiveAddToPlaylistBtn.addEventListener('click', (e) => {
@@ -664,9 +678,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Queue UI logic ────────────────────────────────────────────────────────
     function toggleQueueView() {
         if (queueView.classList.contains('active')) {
-            history.back();
+            hideQueueOverlay();
         } else {
-            navigateTo('queue');
+            showQueueOverlay();
         }
     }
 
@@ -2131,6 +2145,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 renderProfilePanel();
                 openProfile(false);
                 break;
+            case 'history': switchToHistoryView(false); break;
+            case 'likes': switchToLikesView(false); break;
+            case 'downloads': switchToDownloadsView(false); break;
             case 'queue': showQueueOverlay(); break;
             case 'immersive': showImmersiveOverlay(); break;
         }
@@ -2153,10 +2170,70 @@ document.addEventListener('DOMContentLoaded', async () => {
         artistView.classList.remove('active'); artistView.classList.add('hidden');
         if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
         const glv1 = document.getElementById('likes-view'); if (glv1) { glv1.classList.remove('active'); glv1.classList.add('hidden'); }
+        const ghv1 = document.getElementById('history-view'); if (ghv1) { ghv1.classList.remove('active'); ghv1.classList.add('hidden'); }
+        const gdv1 = document.getElementById('downloads-view'); if (gdv1) { gdv1.classList.remove('active'); gdv1.classList.add('hidden'); }
 
         homeView.classList.remove('hidden'); homeView.classList.add('active');
     }
 
+    function switchToHistoryView(push = true) {
+        if (push) navigateTo('history');
+        hideOverlays();
+        
+        homeView.classList.remove('active'); homeView.classList.add('hidden');
+        searchView.classList.remove('active'); searchView.classList.add('hidden');
+        albumView.classList.remove('active'); albumView.classList.add('hidden');
+        artistView.classList.remove('active'); artistView.classList.add('hidden');
+        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
+        const glv1 = document.getElementById('likes-view'); if (glv1) { glv1.classList.remove('active'); glv1.classList.add('hidden'); }
+        const gdv1 = document.getElementById('downloads-view'); if (gdv1) { gdv1.classList.remove('active'); gdv1.classList.add('hidden'); }
+        
+        const historyView = document.getElementById('history-view');
+        if (historyView) {
+            historyView.classList.remove('hidden');
+            historyView.classList.add('active');
+            renderHistoryView();
+        }
+    }
+
+    function switchToLikesView(push = true) {
+        if (push) navigateTo('likes');
+        hideOverlays();
+        
+        homeView.classList.remove('active'); homeView.classList.add('hidden');
+        searchView.classList.remove('active'); searchView.classList.add('hidden');
+        albumView.classList.remove('active'); albumView.classList.add('hidden');
+        artistView.classList.remove('active'); artistView.classList.add('hidden');
+        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
+        const ghv1 = document.getElementById('history-view'); if (ghv1) { ghv1.classList.remove('active'); ghv1.classList.add('hidden'); }
+        const gdv1 = document.getElementById('downloads-view'); if (gdv1) { gdv1.classList.remove('active'); gdv1.classList.add('hidden'); }
+        
+        const likesView = document.getElementById('likes-view');
+        if (likesView) {
+            likesView.classList.remove('hidden');
+            likesView.classList.add('active');
+            renderLikesView();
+        }
+    }
+    function switchToDownloadsView(push = true) {
+        if (push) navigateTo('downloads');
+        hideOverlays();
+        
+        homeView.classList.remove('active'); homeView.classList.add('hidden');
+        searchView.classList.remove('active'); searchView.classList.add('hidden');
+        albumView.classList.remove('active'); albumView.classList.add('hidden');
+        artistView.classList.remove('active'); artistView.classList.add('hidden');
+        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
+        const glv1 = document.getElementById('likes-view'); if (glv1) { glv1.classList.remove('active'); glv1.classList.add('hidden'); }
+        const ghv1 = document.getElementById('history-view'); if (ghv1) { ghv1.classList.remove('active'); ghv1.classList.add('hidden'); }
+        
+        const downloadsView = document.getElementById('downloads-view');
+        if (downloadsView) {
+            downloadsView.classList.remove('hidden');
+            downloadsView.classList.add('active');
+            fetchDownloads();
+        }
+    }
 
 
     function switchToSearchView(push = true) {
@@ -2167,6 +2244,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         artistView.classList.remove('active'); artistView.classList.add('hidden');
         if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
         const glv2 = document.getElementById('likes-view'); if (glv2) { glv2.classList.remove('active'); glv2.classList.add('hidden'); }
+        const ghv2 = document.getElementById('history-view'); if (ghv2) { ghv2.classList.remove('active'); ghv2.classList.add('hidden'); }
+        const gdv2 = document.getElementById('downloads-view'); if (gdv2) { gdv2.classList.remove('active'); gdv2.classList.add('hidden'); }
 
 
         searchView.classList.remove('hidden'); searchView.classList.add('active');
@@ -2181,6 +2260,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         artistView.classList.remove('active'); artistView.classList.add('hidden');
         if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
         const glv3 = document.getElementById('likes-view'); if (glv3) { glv3.classList.remove('active'); glv3.classList.add('hidden'); }
+        const ghv3 = document.getElementById('history-view'); if (ghv3) { ghv3.classList.remove('active'); ghv3.classList.add('hidden'); }
+        const gdv3 = document.getElementById('downloads-view'); if (gdv3) { gdv3.classList.remove('active'); gdv3.classList.add('hidden'); }
 
 
         albumView.classList.remove('hidden'); albumView.classList.add('active');
@@ -2194,6 +2275,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         albumView.classList.remove('active'); albumView.classList.add('hidden');
         if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
         const glv4 = document.getElementById('likes-view'); if (glv4) { glv4.classList.remove('active'); glv4.classList.add('hidden'); }
+        const ghv4 = document.getElementById('history-view'); if (ghv4) { ghv4.classList.remove('active'); ghv4.classList.add('hidden'); }
+        const gdv4 = document.getElementById('downloads-view'); if (gdv4) { gdv4.classList.remove('active'); gdv4.classList.add('hidden'); }
 
         artistView.classList.remove('hidden'); artistView.classList.add('active');
     }
@@ -2250,16 +2333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    if (mobileSettingsBtn) {
-        mobileSettingsBtn.addEventListener('click', () => {
-            if (settingsView.classList.contains('active')) {
-                closeSettings();
-            } else {
-                renderSettingsPanel();
-                openSettings();
-            }
-        });
-    }
+
 
     if (mobileQueueBtn) {
         mobileQueueBtn.addEventListener('click', () => {
@@ -2267,14 +2341,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    if (mobileProfileBtn) {
-        mobileProfileBtn.addEventListener('click', () => {
-            if (profileView.classList.contains('active')) {
-                closeProfile();
-            } else {
-                renderProfilePanel();
-                openProfile();
-            }
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isActive = desktopSidebar.classList.toggle('active');
+            sidebarOverlay.classList.toggle('active', isActive);
+            mobileMenuBtn.classList.toggle('active', isActive);
         });
     }
 
@@ -2283,9 +2355,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Update active states on view switches
     const mobileNavObserver = new MutationObserver(() => {
-        if (profileView && profileView.classList.contains('active')) updateMobileNavActive(mobileProfileBtn);
-        else if (settingsView && settingsView.classList.contains('active')) updateMobileNavActive(mobileSettingsBtn);
-        else if (queueView && queueView.classList.contains('active')) updateMobileNavActive(mobileQueueBtn);
+        if (queueView && queueView.classList.contains('active')) updateMobileNavActive(mobileQueueBtn);
         else if (searchView && searchView.classList.contains('active')) updateMobileNavActive(mobileSearchBtn);
         else if (homeView && homeView.classList.contains('active')) updateMobileNavActive(mobileHomeBtn);
         else updateMobileNavActive(null);
@@ -3018,7 +3088,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderTrackList(tracks, container = trackListElement, isPlaylistView = false, playlistId = null, canEdit = true, showTrackNumbers = false) {
         container.innerHTML = '';
 
-        tracks.forEach((track, index) => {
+        // Hydrate tracks with library data if metadata is sparse (common for cloud-synced or cached items)
+        const tracksToRender = tracks.map(track => {
+            // If it already has quality info, it's probably fully hydrated
+            if (track.metadata && (track.metadata.lossless !== undefined || track.metadata.bitrate !== undefined)) {
+                return track;
+            }
+            const libTrack = allTracks.find(t => t.url === track.url);
+            if (libTrack) {
+                return { ...track, ...libTrack, timestamp: track.timestamp, savedAt: track.savedAt };
+            }
+            return track;
+        });
+
+        tracksToRender.forEach((track, index) => {
             const trackItem = document.createElement('div');
             trackItem.className = 'track-item';
             trackItem.dataset.url = track.url;
@@ -3673,6 +3756,121 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Playlist System ───────────────────────────────────────────────────────
 
+    // ── History System ────────────────────────────────────────────────────────
+    
+    async function fetchHistory() {
+        if (currentUser && window._fbFS) {
+            try {
+                const snap = await window._fbFS.collection('users').doc(currentUser.uid).collection('history')
+                    .orderBy('timestamp', 'desc').limit(100).get();
+                const cloudTracks = snap.docs.map(doc => doc.data());
+                
+                // Hydrate cloud tracks with library data to ensure quality tags and relative paths are present
+                historyTracks = cloudTracks.map(track => {
+                    const libTrack = allTracks.find(t => t.url === track.url);
+                    return libTrack ? { ...track, ...libTrack, timestamp: track.timestamp } : track;
+                });
+            } catch (error) {
+                console.error('[History] Failed to fetch cloud history', error);
+            }
+        } else {
+            // Guest mode: local storage
+            const local = localStorage.getItem('SimonRelays_History');
+            historyTracks = local ? JSON.parse(local) : [];
+        }
+        
+        // Refresh history view if open
+        const historyView = document.getElementById('history-view');
+        if (historyView && !historyView.classList.contains('hidden')) {
+            renderHistoryView();
+        }
+    }
+
+    async function addToHistory(track) {
+        if (!track) return;
+        
+        const historyData = {
+            ...track,
+            timestamp: Date.now()
+        };
+
+        // Update local state: remove if already exists (to move to top) and limit to 100
+        historyTracks = historyTracks.filter(t => t.url !== track.url);
+        historyTracks.unshift(historyData);
+        if (historyTracks.length > 100) historyTracks.pop();
+
+        if (currentUser && window._fbFS) {
+            try {
+                const encodedUrl = btoa(track.url).replace(/\//g, '_').replace(/\+/g, '-');
+                await window._fbFS.collection('users').doc(currentUser.uid).collection('history').doc(encodedUrl).set(historyData);
+            } catch (error) {
+                console.error('[History] Failed to sync history to cloud', error);
+            }
+        } else {
+            localStorage.setItem('SimonRelays_History', JSON.stringify(historyTracks));
+        }
+
+        const historyView = document.getElementById('history-view');
+        if (historyView && !historyView.classList.contains('hidden')) {
+            renderHistoryView();
+        }
+    }
+
+    function renderHistoryView() {
+        const container = document.getElementById('history-track-list');
+        if (!container) return;
+        renderTrackList(historyTracks, container);
+    }
+
+    // ── Downloads System ──────────────────────────────────────────────────────
+
+    let downloadedTracks = [];
+
+    async function fetchDownloads() {
+        try {
+            const results = await getAllDownloadedFromIDB();
+            // Results are objects like { trackUrl, blob, metadata, savedAt }
+            // We need to convert them to the standard track format used by renderTrackList
+            downloadedTracks = results.map(item => {
+                const track = {
+                    url: item.trackUrl,
+                    metadata: item.metadata,
+                    isLocal: true, // Mark as local since it's from IDB
+                    savedAt: item.savedAt
+                };
+                
+                // Hydrate with library data to ensure quality tags and relative paths are present
+                const libTrack = allTracks.find(t => t.url === item.trackUrl);
+                if (libTrack) {
+                    Object.assign(track, libTrack);
+                    // Ensure the IDB-specific properties are preserved
+                    track.isLocal = true;
+                    track.savedAt = item.savedAt;
+                }
+                
+                // Restore relativePath specifically if saved in metadata (new downloads)
+                if (item.metadata && item.metadata.relativePath) {
+                    track.relativePath = item.metadata.relativePath;
+                }
+                
+                return track;
+            }).sort((a, b) => b.savedAt - a.savedAt); // Newest first
+            
+            const downloadsView = document.getElementById('downloads-view');
+            if (downloadsView && !downloadsView.classList.contains('hidden')) {
+                renderDownloadsView();
+            }
+        } catch (error) {
+            console.error('[Downloads] Failed to fetch downloaded tracks', error);
+        }
+    }
+
+    function renderDownloadsView() {
+        const container = document.getElementById('downloads-track-list');
+        if (!container) return;
+        renderTrackList(downloadedTracks, container);
+    }
+
     // ── Likes System ──────────────────────────────────────────────────────────
 
     async function fetchLikes() {
@@ -3745,15 +3943,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function updateLikeButtonState() {
         const likeTrackBtn = document.getElementById('like-track-btn');
-        if (!likeTrackBtn) return;
+        const immersiveLikeBtn = document.getElementById('immersive-like-btn');
         
-        if (!currentUser || !globalPlayingTrack) {
-            likeTrackBtn.classList.remove('active');
-            return;
+        const isLiked = currentUser && globalPlayingTrack && likedTracks.has(globalPlayingTrack.url);
+        
+        if (likeTrackBtn) {
+            if (!currentUser || !globalPlayingTrack) {
+                likeTrackBtn.classList.remove('active');
+            } else {
+                likeTrackBtn.classList.toggle('active', isLiked);
+            }
         }
         
-        const isLiked = likedTracks.has(globalPlayingTrack.url);
-        likeTrackBtn.classList.toggle('active', isLiked);
+        if (immersiveLikeBtn) {
+            if (!currentUser || !globalPlayingTrack) {
+                immersiveLikeBtn.style.display = 'none';
+            } else {
+                immersiveLikeBtn.style.display = '';
+                immersiveLikeBtn.classList.toggle('active', isLiked);
+                const svg = immersiveLikeBtn.querySelector('svg');
+                if (svg) {
+                    svg.style.fill = isLiked ? 'var(--accent)' : 'none';
+                    svg.style.stroke = isLiked ? 'var(--accent)' : 'currentColor';
+                }
+            }
+        }
     }
     
     function renderLikesView() {
@@ -4412,6 +4626,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
     async function playTrack(track, title, artist) {
+        addToHistory(track);
         if (window.electronAPI) {
             window.electronAPI.updatePresence({ title, artist, startTime: Date.now(), isPaused: false });
         }
@@ -4574,7 +4789,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!response.ok) throw new Error('Network response was not ok');
 
             const blob = await response.blob();
-            await saveTrackToIDB(track.url, blob, track.metadata);
+            // Include relativePath in metadata so we can show covers even if library isn't loaded
+            const saveMetadata = { ...track.metadata, relativePath: track.relativePath };
+            await saveTrackToIDB(track.url, blob, saveMetadata);
 
             // Mark as offline in the local map
             downloadedTracksMap.set(track.url, 'indexeddb');
@@ -4881,6 +5098,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             e.stopPropagation();
             const isActive = desktopSidebar.classList.toggle('active');
             sidebarOverlay.classList.toggle('active', isActive);
+            if (mobileMenuBtn) mobileMenuBtn.classList.toggle('active', isActive);
         });
 
         // Close sidebar if clicking outside
@@ -4889,8 +5107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 !desktopSidebar.contains(e.target) && 
                 e.target !== desktopSidebarToggle &&
                 !desktopSidebarToggle.contains(e.target)) {
-                desktopSidebar.classList.remove('active');
-                sidebarOverlay.classList.remove('active');
+                closeSidebar();
             }
         });
     }
@@ -4905,31 +5122,49 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const sidebarLikesBtn = document.getElementById('sidebar-likes-btn');
-    const likesView = document.getElementById('likes-view');
-
-    if (sidebarLikesBtn && likesView) {
+    if (sidebarLikesBtn) {
         sidebarLikesBtn.addEventListener('click', () => {
             if (!currentUser) {
                 // Must be logged in to view likes
                 if (loginOverlay) loginOverlay.classList.remove('hidden');
                 return;
             }
-            
-            // Hide other views manually
-            if (homeView) { homeView.classList.remove('active'); homeView.classList.add('hidden'); }
-            if (searchView) { searchView.classList.remove('active'); searchView.classList.add('hidden'); }
-            if (albumView) { albumView.classList.remove('active'); albumView.classList.add('hidden'); }
-            if (artistView) { artistView.classList.remove('active'); artistView.classList.add('hidden'); }
-            if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
-            
-            // Show likes view
-            likesView.classList.remove('hidden');
-            likesView.classList.add('active');
-            renderLikesView();
-            
-            // Close sidebar
-            if (desktopSidebar) desktopSidebar.classList.remove('active');
-            if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+            switchToLikesView();
+            closeSidebar();
+        });
+    }
+
+    const sidebarDownloadsBtn = document.getElementById('sidebar-downloads-btn');
+    if (sidebarDownloadsBtn) {
+        sidebarDownloadsBtn.addEventListener('click', () => {
+            switchToDownloadsView();
+            closeSidebar();
+        });
+    }
+
+    const sidebarHistoryBtn = document.getElementById('sidebar-history-btn');
+    if (sidebarHistoryBtn) {
+        sidebarHistoryBtn.addEventListener('click', () => {
+            switchToHistoryView();
+            closeSidebar();
+        });
+    }
+
+    const sidebarProfileBtn = document.getElementById('sidebar-profile-btn');
+    if (sidebarProfileBtn) {
+        sidebarProfileBtn.addEventListener('click', () => {
+            renderProfilePanel();
+            openProfile();
+            closeSidebar();
+        });
+    }
+
+    const sidebarSettingsBtn = document.getElementById('sidebar-settings-btn');
+    if (sidebarSettingsBtn) {
+        sidebarSettingsBtn.addEventListener('click', () => {
+            renderSettingsPanel();
+            openSettings();
+            closeSidebar();
         });
     }
 
