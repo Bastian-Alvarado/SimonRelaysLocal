@@ -3101,6 +3101,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             const qualityLabel = getQualityLabel(track);
             const qualityTagHtml = qualityLabel ? `<div class="quality-tag ${qualityLabel.toLowerCase().replace('-', '')}">${qualityLabel}</div>` : '';
 
+            // Like button (Heart)
+            const isLiked = likedTracks.has(track.url);
+            const likeBtnHtml = currentUser ? `
+                <button class="icon-button track-like-btn ${isLiked ? 'active' : ''}" title="${isLiked ? 'Unlike' : 'Like'}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="${isLiked ? 'var(--accent)' : 'none'}" stroke="${isLiked ? 'var(--accent)' : 'currentColor'}" stroke-width="2">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                    </svg>
+                </button>` : '';
+
             trackItem.innerHTML = `
                 ${trackNumberHtml}
                 ${dragHandleHtml}
@@ -3119,6 +3128,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </svg>
                     </div>` : ''}
                     ${qualityTagHtml}
+                    ${likeBtnHtml}
                     ${isUnsupported ? '' : offlineIconHtml}
                     ${actionBtnHtml}
                     <button class="icon-button track-item-more-btn" title="More">
@@ -3131,6 +3141,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             const moreBtn = trackItem.querySelector('.track-item-more-btn');
             if (moreBtn) {
                 moreBtn.addEventListener('click', (e) => showContextMenu(e, track, moreBtn, canEdit, playlistId, trackItem));
+            }
+
+            // Like Button Handler
+            const trackLikeBtn = trackItem.querySelector('.track-like-btn');
+            if (trackLikeBtn) {
+                trackLikeBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await toggleLike(track);
+                    const nowLiked = likedTracks.has(track.url);
+                    trackLikeBtn.classList.toggle('active', nowLiked);
+                    const svg = trackLikeBtn.querySelector('svg');
+                    svg.style.fill = nowLiked ? 'var(--accent)' : 'none';
+                    svg.style.stroke = nowLiked ? 'var(--accent)' : 'currentColor';
+                });
             }
 
             // Contextual Button Handler
@@ -3676,10 +3700,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    async function toggleLike() {
-        if (!currentUser || !window._fbFS || !globalPlayingTrack) return;
+    async function toggleLike(trackToToggle = null) {
+        const track = trackToToggle || globalPlayingTrack;
+        if (!currentUser || !window._fbFS || !track) return;
         
-        const track = globalPlayingTrack;
         const trackUrl = track.url;
         // Firebase paths cannot contain ".", so we encode the URL
         const safeUrlId = encodeURIComponent(trackUrl).replace(/\./g, '%2E');

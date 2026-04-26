@@ -2801,6 +2801,24 @@ body {
     transition: transform 0.15s ease, opacity 0.2s ease;
 }
 
+.track-like-btn {
+    transition: transform 0.15s ease, opacity 0.2s ease;
+    margin-left: 8px;
+    margin-right: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.track-like-btn:active {
+    transform: scale(0.85);
+}
+
+.track-like-btn.active svg {
+    fill: var(--accent);
+    stroke: var(--accent);
+}
+
 .like-track-btn:active {
     transform: scale(0.85);
 }
