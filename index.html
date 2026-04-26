@@ -280,11 +280,11 @@
 
         <!-- Queue View -->
         <div id="queue-view" class="view hidden" style="display: flex; flex-direction: column; overflow: hidden; padding-bottom: 100px; z-index: 50; background: var(--bg-color, #0a0a0f);">
-            <div class="search-header-text" style="margin-bottom: 24px;">Queue</div>
+
             <div class="app-container glass-panel" style="flex-direction: column; overflow: hidden; padding: 24px; flex: 1; min-height: 0;">
                 
                 <h2 class="section-heading" style="font-size: 16px; text-transform: uppercase; font-weight: 800; margin-bottom: 12px; color: var(--accent); flex-shrink: 0;">Now Playing</h2>
-                <div id="queue-now-playing" class="track-list" style="margin-bottom: 24px; flex-shrink: 0;"></div>
+                <div id="queue-now-playing" class="track-list" style="flex: none; flex-shrink: 0;"></div>
                 
                 <div id="queue-user-section" style="display: none; flex-direction: column; flex-shrink: 0; margin-bottom: 24px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
@@ -294,7 +294,7 @@
                     <div id="queue-user-list" class="track-list" style="max-height: 250px; overflow-y: auto;"></div>
                 </div>
                 
-                <h2 class="section-heading" style="font-size: 14px; text-transform: uppercase; font-weight: 700; margin-bottom: 12px; color: var(--text-secondary); flex-shrink: 0;">Next From Source</h2>
+                <h2 class="section-heading" style="font-size: 14px; text-transform: uppercase; font-weight: 700; margin-top: 16px; margin-bottom: 12px; color: var(--text-secondary); flex-shrink: 0;">Next From Source</h2>
                 <div id="queue-context-list" class="track-list" style="flex: 1; overflow-y: auto; padding-right: 8px;"></div>
             </div>
         </div>

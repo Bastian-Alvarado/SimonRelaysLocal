@@ -623,6 +623,14 @@ body {
     padding: 12px 16px; border-radius: 12px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s ease; border: 1px solid transparent; 
     display: flex; flex-direction: row; align-items: center; gap: 12px;
 }
+.track-index {
+    width: 20px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    text-align: right;
+    font-weight: 500;
+    flex-shrink: 0;
+}
 .track-item-cover {
     width: 44px;
     height: 44px;
@@ -797,6 +805,34 @@ body {
     background-color: transparent !important; 
     color: inherit;
 }
+/* Quality Tags */
+.quality-tag {
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 2px 5px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+    margin-right: 6px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+.quality-tag.hires {
+    color: #facc15;
+    border-color: rgba(250, 204, 21, 0.4);
+    background: rgba(250, 204, 21, 0.05);
+}
+.quality-tag.lossless {
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.05);
+}
+.quality-tag.hq {
+    opacity: 0.7;
+}
+
 .unsupported-alert {
     color: #ff4757;
     margin-left: auto;
@@ -1504,7 +1540,7 @@ body {
     .app-header {
         padding: 12px 16px;
     }
-    .header-center, #settings-btn, .logo, .header-left {
+    .header-center, #settings-btn, .logo, .header-left, #profile-btn {
         display: none !important;
     }
     .window-controls {
@@ -1527,9 +1563,34 @@ body {
         padding: 16px !important;
         padding-top: 24px !important;
         padding-bottom: 160px !important; /* Player (70) + Nav (70) + buffer */
+        overflow-x: hidden;
     }
     .blob {
         display: none; /* performance & declutter */
+    }
+    .app-wrapper {
+        overflow-x: hidden;
+    }
+    .quality-tag {
+        display: none;
+    }
+    .app-container.glass-panel {
+        margin-left: -16px;
+        margin-right: -16px;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        background: rgba(10, 15, 24, 0.5);
+    }
+    .app-container.glass-panel .sidebar {
+        padding: 16px 12px;
+    }
+    .track-item {
+        border-radius: 8px;
+    }
+    .album-hero, .album-hero-info, .album-hero-meta {
+        overflow-x: hidden;
+        max-width: 100%;
     }
     .album-grid {
         grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;

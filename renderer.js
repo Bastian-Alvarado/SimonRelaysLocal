@@ -418,6 +418,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     let userQueue = [];
     let downloadedTracksMap = new Map(); // url -> localPath
     let pendingDownloads = new Map(); // url -> progress
+
+    // ── Infinite Play State ───────────────────────────────────────────────────
+    let sessionHistory          = [];   // up to 50 recently played URLs
+    let sessionAffinity         = { artists: {}, genres: {} };
+    let pendingRecommendedTrack = null; // pre-computed next pick
+    // ─────────────────────────────────────────────────────────────────────────
     let pendingUploads = new Set();  // url
     let currentActiveBlobUrl = null;
 
@@ -1463,12 +1469,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (total === 0) return -1;
         let checked = 0;
 
+        // Pre-check: if startIndex is already out of bounds, wrap or bail
+        // before the loop body tries to access currentPlaylistContext[i].
+        // Only wrap when repeatMode===1 — never wrap due to !isAutoEnded,
+        // otherwise manual skip at end-of-album incorrectly restarts the album
+        // instead of triggering the infinite-play recommendation.
+        if (i >= total) {
+            if (repeatMode === 1) {
+                i = 0;
+            } else {
+                return -1;
+            }
+        } else if (i < 0) {
+            if (repeatMode === 1) {
+                i = total - 1;
+            } else {
+                return -1;
+            }
+        }
+
         while (checked < total) {
             if (!isTrackUnsupported(currentPlaylistContext[i])) return i;
             i += direction;
             checked++;
             if (i >= total) {
-                if (repeatMode === 1 || !isAutoEnded) {
+                if (repeatMode === 1) {
                     i = 0;
                 } else {
                     return -1;
@@ -1483,6 +1508,82 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         return -1;
     }
+
+    // ── Infinite Play Engine ──────────────────────────────────────────────────
+    function _updateSessionAffinity(track) {
+        const artist = track.metadata?.artist || '';
+        const genre  = track.metadata?.genre  || '';
+        if (artist) sessionAffinity.artists[artist] = ((sessionAffinity.artists[artist] || 0) * 0.75) + 1.0;
+        if (genre)  sessionAffinity.genres[genre]   = ((sessionAffinity.genres[genre]   || 0) * 0.75) + 1.0;
+    }
+
+    function _isLastTrackInContext() {
+        if (userQueue.length > 0 || repeatMode !== 0 || currentPlaylistContext.length === 0) return false;
+        if (isShuffleActive) return unplayedIndices.length === 0;
+        return getNextPlayableIndex(currentTrackIndex + 1, 1, true) === -1;
+    }
+
+    function _pickRecommendedTrack(currentTrack) {
+        if (!allTracks || allTracks.length === 0) return null;
+        const currentYear = parseInt(currentTrack?.metadata?.year) || 0;
+
+        const candidates = allTracks.filter(t =>
+            !isTrackUnsupported(t) && t.url !== currentTrack?.url
+        );
+        if (candidates.length === 0) return null;
+
+        const scored = candidates.map(track => {
+            const artist = track.metadata?.artist || '';
+            const genre  = track.metadata?.genre  || '';
+            const year   = parseInt(track.metadata?.year) || 0;
+            let score = 0;
+
+            // Artist affinity (0-40 pts)
+            score += (sessionAffinity.artists[artist] || 0) * 40;
+            // Genre affinity (0-20 pts)
+            score += (sessionAffinity.genres[genre] || 0) * 20;
+            // Era proximity — 1 pt per year, max 10 (within 10-year window)
+            if (currentYear && year) score += Math.max(0, 10 - Math.abs(currentYear - year));
+            // Recency penalty — exponential decay, -50 at position 0, ~0 at position 40
+            const histPos = sessionHistory.lastIndexOf(track.url);
+            if (histPos !== -1) {
+                const distFromEnd = sessionHistory.length - 1 - histPos;
+                score -= 50 * Math.exp(-distFromEnd / 10);
+            }
+            // Diversity nudge — penalise same artist if in last 3 plays
+            const recentThree = sessionHistory.slice(-3);
+            if (recentThree.some(url => allTracks.find(x => x.url === url)?.metadata?.artist === artist)) {
+                score -= 20;
+            }
+            // Random noise (0-15 pts) — prevents deterministic loops
+            score += Math.random() * 15;
+
+            return { track, score };
+        });
+
+        // Shift scores so all weights are positive, then weighted-random pick
+        const minScore = Math.min(...scored.map(s => s.score));
+        const weighted = scored.map(s => ({ track: s.track, w: Math.max(0.1, s.score - minScore + 0.1) }));
+        const total    = weighted.reduce((sum, s) => sum + s.w, 0);
+        let rand = Math.random() * total;
+        for (const s of weighted) {
+            rand -= s.w;
+            if (rand <= 0) return s.track;
+        }
+        return weighted[weighted.length - 1].track;
+    }
+
+    function _scheduleRecommendation(currentTrack) {
+        pendingRecommendedTrack = null;
+        setTimeout(() => {
+            const pick = _pickRecommendedTrack(currentTrack);
+            if (pick) {
+                pendingRecommendedTrack = pick;
+                console.log('[InfinitePlay] Ready:', pick.metadata?.title || pick.filename);
+            }
+        }, 0);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     function commitTrackChange(index) {
         if (index < 0 || index >= currentPlaylistContext.length) return;
@@ -1509,6 +1610,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         playTrack(track, title, artist);
+
+        // Infinite Play: track session history + affinity, pre-compute rec if last track
+        sessionHistory.push(track.url);
+        if (sessionHistory.length > 50) sessionHistory.shift();
+        _updateSessionAffinity(track);
+        if (_isLastTrackInContext()) _scheduleRecommendation(track);
+
+        // Keep the queue panel in sync with the new context
+        if (queueView && queueView.classList.contains('active')) {
+            renderQueueView();
+        }
     }
 
     function playNextTrack(isAutoEnded) {
@@ -1526,8 +1638,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (isShuffleActive) {
             if (unplayedIndices.length === 0) {
-                if (repeatMode === 0 && isAutoEnded) {
-                    audioPlayer.pause();
+                if (repeatMode === 0) {
+                    if (pendingRecommendedTrack) {
+                        const rec = pendingRecommendedTrack;
+                        pendingRecommendedTrack = null;
+                        currentPlaylistContext = [rec];
+                        unplayedIndices = [];
+                        commitTrackChange(0);
+                    } else {
+                        audioPlayer.pause();
+                    }
                     return;
                 }
                 unplayedIndices = currentPlaylistContext.map((_, i) => i)
@@ -1541,6 +1661,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const nextIdx = getNextPlayableIndex(currentTrackIndex + 1, 1, isAutoEnded);
             if (nextIdx !== -1) {
                 commitTrackChange(nextIdx);
+            } else if (pendingRecommendedTrack) {
+                const rec = pendingRecommendedTrack;
+                pendingRecommendedTrack = null;
+                currentPlaylistContext = [rec];
+                unplayedIndices = [];
+                commitTrackChange(0);
             } else {
                 audioPlayer.pause();
             }
@@ -2414,6 +2540,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function initializeMusicLibrary() {
+        // Any reload means track metadata may have changed — clear stale view cache entries
+        _openVCDB().then(async (db) => {
+            const manifest = await _vcGetManifest(db);
+            const albumAndArtistKeys = Object.keys(manifest.entries).filter(k => k.startsWith('album:') || k.startsWith('artist:'));
+            for (const key of albumAndArtistKeys) await _vcEvict(db, manifest, key);
+            if (albumAndArtistKeys.length > 0) await _vcPut(db, { key: VC_MANIFEST, data: manifest });
+        }).catch(() => {});
+
         try {
             const serverRes = await fetch(`${serverBaseUrl}/api/audio`);
             const serverTracks = serverRes.ok ? await serverRes.json() : [];
@@ -2538,6 +2672,147 @@ document.addEventListener('DOMContentLoaded', async () => {
         return `${secs} sec`;
     }
 
+    // ── View Cache (IndexedDB, 15 MB budget, 12-hour TTL, LRU) ───────────────
+    const VC_DB_NAME   = 'SimonRelaysViewCache';
+    const VC_STORE     = 'views';
+    const VC_MAX_BYTES = 15 * 1024 * 1024; // 15 MB
+    const VC_TTL       = 12 * 60 * 60 * 1000; // 12 hours
+    const VC_MANIFEST  = '__manifest__';
+    let _vcDb = null;
+
+    function _openVCDB() {
+        if (_vcDb) return Promise.resolve(_vcDb);
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(VC_DB_NAME, 1);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(VC_STORE)) {
+                    db.createObjectStore(VC_STORE, { keyPath: 'key' });
+                }
+            };
+            req.onsuccess = (e) => { _vcDb = e.target.result; resolve(_vcDb); };
+            req.onerror   = (e) => reject(e.target.error);
+        });
+    }
+
+    function _vcGet(db, key) {
+        return new Promise((resolve) => {
+            const req = db.transaction(VC_STORE, 'readonly').objectStore(VC_STORE).get(key);
+            req.onsuccess = (e) => resolve(e.target.result || null);
+            req.onerror   = () => resolve(null);
+        });
+    }
+
+    function _vcPut(db, record) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(VC_STORE, 'readwrite');
+            tx.objectStore(VC_STORE).put(record);
+            tx.oncomplete = () => resolve();
+            tx.onerror    = (e) => reject(e.target.error);
+        });
+    }
+
+    function _vcDelete(db, key) {
+        return new Promise((resolve) => {
+            const tx = db.transaction(VC_STORE, 'readwrite');
+            tx.objectStore(VC_STORE).delete(key);
+            tx.oncomplete = () => resolve();
+            tx.onerror    = () => resolve();
+        });
+    }
+
+    async function _vcGetManifest(db) {
+        const rec = await _vcGet(db, VC_MANIFEST);
+        return rec ? rec.data : { totalBytes: 0, entries: {} };
+    }
+
+    async function _vcEvict(db, manifest, key) {
+        await _vcDelete(db, key);
+        if (manifest.entries[key]) {
+            manifest.totalBytes = Math.max(0, manifest.totalBytes - manifest.entries[key].size);
+            delete manifest.entries[key];
+        }
+    }
+
+    async function setCachedView(cacheKey, data) {
+        try {
+            const db = await _openVCDB();
+            const manifest = await _vcGetManifest(db);
+            const byteSize = new Blob([JSON.stringify(data)]).size;
+            const now = Date.now();
+
+            // 1. Evict expired entries
+            for (const key of Object.keys(manifest.entries)) {
+                if (now - manifest.entries[key].lastAccessed > VC_TTL) {
+                    await _vcEvict(db, manifest, key);
+                }
+            }
+
+            // 2. Subtract old size if re-caching same key
+            if (manifest.entries[cacheKey]) {
+                manifest.totalBytes = Math.max(0, manifest.totalBytes - manifest.entries[cacheKey].size);
+            }
+
+            // 3. Evict oldest until we have room
+            while (manifest.totalBytes + byteSize > VC_MAX_BYTES) {
+                const oldest = Object.entries(manifest.entries)
+                    .sort((a, b) => a[1].lastAccessed - b[1].lastAccessed)[0];
+                if (!oldest) break;
+                await _vcEvict(db, manifest, oldest[0]);
+            }
+
+            // 4. Write data and update manifest
+            await _vcPut(db, { key: cacheKey, data });
+            manifest.entries[cacheKey] = { size: byteSize, lastAccessed: now };
+            manifest.totalBytes += byteSize;
+            await _vcPut(db, { key: VC_MANIFEST, data: manifest });
+        } catch (e) {
+            console.warn('[ViewCache] setCachedView failed', e);
+        }
+    }
+
+    async function getCachedView(cacheKey) {
+        try {
+            const db = await _openVCDB();
+            const manifest = await _vcGetManifest(db);
+            const entry = manifest.entries[cacheKey];
+            if (!entry) return null;
+
+            // Expired?
+            if (Date.now() - entry.lastAccessed > VC_TTL) {
+                await _vcEvict(db, manifest, cacheKey);
+                await _vcPut(db, { key: VC_MANIFEST, data: manifest });
+                return null;
+            }
+
+            const rec = await _vcGet(db, cacheKey);
+            if (!rec) return null;
+
+            // Touch (LRU update) — fire and forget
+            entry.lastAccessed = Date.now();
+            _vcPut(db, { key: VC_MANIFEST, data: manifest });
+
+            return rec.data;
+        } catch (e) {
+            console.warn('[ViewCache] getCachedView failed', e);
+            return null;
+        }
+    }
+
+    async function invalidateCachedView(cacheKey) {
+        try {
+            const db = await _openVCDB();
+            const manifest = await _vcGetManifest(db);
+            if (manifest.entries[cacheKey]) {
+                await _vcEvict(db, manifest, cacheKey);
+                await _vcPut(db, { key: VC_MANIFEST, data: manifest });
+            }
+        } catch (e) {
+            console.warn('[ViewCache] invalidateCachedView failed', e);
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     function openAlbumView(albumInfo, push = true) {
         if (push) navigateTo('album', { albumInfo });
         switchToAlbumView(false);
@@ -2634,11 +2909,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             heroArtistLink.addEventListener('click', () => openArtistView(albumInfo.artist));
         }
 
-        renderTrackList(albumInfo.tracks);
+        renderTrackList(albumInfo.tracks, trackListElement, false, null, true, true);
+
+        // Write to view cache (fire-and-forget)
+        setCachedView(`album:${albumInfo.name}`, albumInfo);
+    }
+
+    function getQualityLabel(track) {
+        if (!track.metadata) return null;
+        const m = track.metadata;
+        if (m.lossless) {
+            if (m.bitsPerSample > 16 || (m.sampleRate && m.sampleRate > 44100)) return 'Hi-Res';
+            return 'Lossless';
+        }
+        if (m.bitrate && m.bitrate >= 256000) return 'HQ';
+        return null;
     }
 
     // ── Track List Rendering ──────────────────────────────────────────────────
-    function renderTrackList(tracks, container = trackListElement, isPlaylistView = false, playlistId = null, canEdit = true) {
+    function renderTrackList(tracks, container = trackListElement, isPlaylistView = false, playlistId = null, canEdit = true, showTrackNumbers = false) {
         container.innerHTML = '';
 
         tracks.forEach((track, index) => {
@@ -2715,7 +3004,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 coverHtml = `<div class="track-item-cover"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div>`;
             }
 
+            let trackNumberHtml = '';
+            if (showTrackNumbers) {
+                const trackNo = (track.metadata && track.metadata.track && track.metadata.track.no) ? track.metadata.track.no : (index + 1);
+                trackNumberHtml = `<div class="track-index">${trackNo}</div>`;
+            }
+
+            const qualityLabel = getQualityLabel(track);
+            const qualityTagHtml = qualityLabel ? `<div class="quality-tag ${qualityLabel.toLowerCase().replace('-', '')}">${qualityLabel}</div>` : '';
+
             trackItem.innerHTML = `
+                ${trackNumberHtml}
                 ${dragHandleHtml}
                 ${coverHtml}
                 <div class="track-item-info">
@@ -2731,6 +3030,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <line x1="12" y1="17" x2="12.01" y2="17"></line>
                         </svg>
                     </div>` : ''}
+                    ${qualityTagHtml}
                     ${isUnsupported ? '' : offlineIconHtml}
                     ${actionBtnHtml}
                     <button class="icon-button track-item-more-btn" title="More">
@@ -2932,6 +3232,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             card.addEventListener('click', () => openAlbumView(albumInfo));
             artistAlbumGrid.appendChild(card);
         });
+
+        // Write to view cache (fire-and-forget)
+        setCachedView(`artist:${artistName}`, { artistAlbums, artistTracks });
     }
 
     function parseLrc(lrcString) {
@@ -3732,6 +4035,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         renderTrackList(playlist.tracks, playlistTrackList, true, playlist.id, isOwnPlaylist);
+
+        // Write to view cache (fire-and-forget)
+        setCachedView(`playlist:${playlist.id}`, playlist);
     }
 
     // ── Add-to-playlist dropdown ──────────────────────────────────────────────
@@ -4140,7 +4446,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const albumName = albumHeroDiv.querySelector('.album-hero-title')?.textContent;
             if (albumName && albumsData[albumName]) {
                 const album = albumsData[albumName];
-                renderTrackList(album.tracks);
+                renderTrackList(album.tracks, trackListElement, false, null, true, true);
                 updateAlbumHeroOfflineStatus(album);
             }
         } else if (activeView.id === 'artist-view') {
