@@ -113,6 +113,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Global State
     let currentUser = null;
+    let likedTracks = new Set();
+    let allLikedTracksCache = [];
 
     // ── Firebase Configuration ───────────────────────────────────────────────
     /**
@@ -155,23 +157,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         // ── Auth State Listener ──────────────────────────────────────────────
         window._fbAuth.onAuthStateChanged(user => {
             currentUser = user;
+            
+            const likeTrackBtn = document.getElementById('like-track-btn');
+            
             if (user) {
                 console.log('[Cloud] User logged in:', user.email);
                 if (loginOverlay) loginOverlay.classList.add('hidden');
+                
+                if (likeTrackBtn) likeTrackBtn.style.display = '';
+
                 // Trigger fetch from Firebase
                 fetchPlaylists();
+                fetchLikes();
 
                 // Always update panels if they are currently visible
                 if (settingsView && settingsView.classList.contains('active')) renderSettingsPanel();
                 if (profileView && profileView.classList.contains('active')) renderProfilePanel();
             } else {
                 console.log('[Cloud] User logged out.');
+                
+                if (likeTrackBtn) likeTrackBtn.style.display = 'none';
+                
                 // Show login overlay if not skipped in session
                 if (loginOverlay && !sessionStorage.getItem('skipLogin')) {
                     loginOverlay.classList.remove('hidden');
                 }
-                // Clear playlists on logout
+                
+                // Clear playlists and likes on logout
                 allPlaylists = [];
+                likedTracks.clear();
+                allLikedTracksCache = [];
+                updateLikeButtonState();
+                
                 renderPlaylistsStrip();
                 fetchPlaylists(); // Will trigger local fallback or empty render
 
@@ -420,8 +437,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let pendingDownloads = new Map(); // url -> progress
 
     // ── Infinite Play State ───────────────────────────────────────────────────
-    let sessionHistory          = [];   // up to 50 recently played URLs
-    let sessionAffinity         = { artists: {}, genres: {} };
+    let sessionHistory = [];   // up to 50 recently played URLs
+    let sessionAffinity = { artists: {}, genres: {} };
     let pendingRecommendedTrack = null; // pre-computed next pick
     // ─────────────────────────────────────────────────────────────────────────
     let pendingUploads = new Set();  // url
@@ -517,6 +534,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const immersiveArtist = document.getElementById('immersive-artist');
     const immersiveLyricsContainer = lyricsContainer; // Keep reference for backward compatibility
 
+    // Up Next Badge (desktop immersive)
+    const immersiveUpNext = document.getElementById('immersive-up-next');
+    const immersiveUpNextArt = document.getElementById('immersive-up-next-art');
+    const immersiveUpNextTitle = document.getElementById('immersive-up-next-title');
+    const immersiveUpNextArtist = document.getElementById('immersive-up-next-artist');
+
     // Lyrics creation state
     let plainLyricsCache = '';
     let lyricsTrackUrl = '';
@@ -552,6 +575,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    const immersiveAddToPlaylistBtn = document.getElementById('immersive-add-to-playlist-btn');
+    if (immersiveAddToPlaylistBtn) {
+        immersiveAddToPlaylistBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (globalPlayingTrack) {
+                showAddToPlaylistDropdown(globalPlayingTrack, immersiveAddToPlaylistBtn);
+            }
+        });
+    }
+
+    if (immersiveUpNext) {
+        immersiveUpNext.addEventListener('click', (e) => {
+            e.stopPropagation();
+            playNextTrack(true); // Treat as a manual skip to the next track
+        });
+    }
+
     function showImmersiveOverlay() {
         hideOverlays('immersive'); // Close settings/queue before opening immersive
         openViewAnimated(immersiveView);
@@ -566,6 +606,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (currentLyricIndex !== -1 && lyricsData[currentLyricIndex]) {
             updateLyricsSync();
         }
+
+        // Populate Up Next badge
+        updateImmersiveUpNext();
     }
 
     function hideImmersiveOverlay() {
@@ -579,6 +622,43 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (playerBar) playerBar.classList.remove('fullscreen-active');
         }
     }
+
+    // ── Up Next Badge ─────────────────────────────────────────────────────────
+    function updateImmersiveUpNext() {
+        if (!immersiveUpNext || !immersiveView || !immersiveView.classList.contains('active')) return;
+
+        // Priority: user queue → next in context → pending recommendation
+        let upNext = null;
+        if (userQueue.length > 0) {
+            upNext = userQueue[0];
+        } else if (!isShuffleActive && currentPlaylistContext.length > 0) {
+            const nextIdx = getNextPlayableIndex(currentTrackIndex + 1, 1, true);
+            if (nextIdx !== -1) upNext = currentPlaylistContext[nextIdx];
+        }
+        if (!upNext && pendingRecommendedTrack) upNext = pendingRecommendedTrack;
+
+        if (!upNext) {
+            immersiveUpNext.classList.add('hidden');
+            immersiveView.classList.remove('has-up-next');
+            return;
+        }
+
+        const title = (upNext.metadata && upNext.metadata.title) ? upNext.metadata.title : upNext.filename;
+        const artist = (upNext.metadata && upNext.metadata.artist) ? upNext.metadata.artist : 'Unknown Artist';
+        immersiveUpNextTitle.textContent = title;
+        immersiveUpNextArtist.textContent = artist;
+
+        if (upNext.metadata && upNext.metadata.hasCover && upNext.relativePath) {
+            immersiveUpNextArt.src = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(upNext.relativePath)}`;
+            immersiveUpNextArt.style.display = 'block';
+        } else {
+            immersiveUpNextArt.style.display = 'none';
+        }
+
+        immersiveUpNext.classList.remove('hidden');
+        immersiveView.classList.add('has-up-next');
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
 
     // ── Queue UI logic ────────────────────────────────────────────────────────
@@ -806,7 +886,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (photoBase64 !== undefined) updates.photoURL = photoBase64;
 
             await currentUser.updateProfile(updates);
-            
+
             // Re-render
             renderProfilePanel();
 
@@ -1273,7 +1353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const paths = getLocalMusicPaths();
                 paths.splice(idx, 1);
                 saveLocalMusicPaths(paths);
-                        await initializeMusicLibrary();
+                await initializeMusicLibrary();
                 renderSettingsPanel();
             });
         });
@@ -1297,7 +1377,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
                     uploadStatus.textContent = `Uploading ${i + 1}/${files.length}: ${file.name}`;
-                    
+
                     try {
                         const response = await fetch(`${serverBaseUrl}/api/upload`, {
                             method: 'POST',
@@ -1325,7 +1405,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 uploadBtn.textContent = 'Select Files';
                 uploadStatus.textContent = `Done! ${successCount} uploaded, ${errorCount} failed.`;
                 uploadStatus.style.color = errorCount > 0 ? '#f44336' : '#4caf50';
-                
+
                 if (successCount > 0) {
                     await initializeMusicLibrary();
                     renderHomeGrid();
@@ -1512,9 +1592,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Infinite Play Engine ──────────────────────────────────────────────────
     function _updateSessionAffinity(track) {
         const artist = track.metadata?.artist || '';
-        const genre  = track.metadata?.genre  || '';
+        const genre = track.metadata?.genre || '';
         if (artist) sessionAffinity.artists[artist] = ((sessionAffinity.artists[artist] || 0) * 0.75) + 1.0;
-        if (genre)  sessionAffinity.genres[genre]   = ((sessionAffinity.genres[genre]   || 0) * 0.75) + 1.0;
+        if (genre) sessionAffinity.genres[genre] = ((sessionAffinity.genres[genre] || 0) * 0.75) + 1.0;
     }
 
     function _isLastTrackInContext() {
@@ -1534,8 +1614,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const scored = candidates.map(track => {
             const artist = track.metadata?.artist || '';
-            const genre  = track.metadata?.genre  || '';
-            const year   = parseInt(track.metadata?.year) || 0;
+            const genre = track.metadata?.genre || '';
+            const year = parseInt(track.metadata?.year) || 0;
             let score = 0;
 
             // Artist affinity (0-40 pts)
@@ -1564,7 +1644,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Shift scores so all weights are positive, then weighted-random pick
         const minScore = Math.min(...scored.map(s => s.score));
         const weighted = scored.map(s => ({ track: s.track, w: Math.max(0.1, s.score - minScore + 0.1) }));
-        const total    = weighted.reduce((sum, s) => sum + s.w, 0);
+        const total = weighted.reduce((sum, s) => sum + s.w, 0);
         let rand = Math.random() * total;
         for (const s of weighted) {
             rand -= s.w;
@@ -1580,6 +1660,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (pick) {
                 pendingRecommendedTrack = pick;
                 console.log('[InfinitePlay] Ready:', pick.metadata?.title || pick.filename);
+                updateImmersiveUpNext();
             }
         }, 0);
     }
@@ -1621,6 +1702,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (queueView && queueView.classList.contains('active')) {
             renderQueueView();
         }
+        // Refresh Up Next badge in immersive view
+        updateImmersiveUpNext();
     }
 
     function playNextTrack(isAutoEnded) {
@@ -2069,6 +2152,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         searchView.classList.remove('active'); searchView.classList.add('hidden');
         artistView.classList.remove('active'); artistView.classList.add('hidden');
         if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
+        const glv1 = document.getElementById('likes-view'); if (glv1) { glv1.classList.remove('active'); glv1.classList.add('hidden'); }
 
         homeView.classList.remove('hidden'); homeView.classList.add('active');
     }
@@ -2082,6 +2166,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         artistView.classList.remove('active'); artistView.classList.add('hidden');
         if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
+        const glv2 = document.getElementById('likes-view'); if (glv2) { glv2.classList.remove('active'); glv2.classList.add('hidden'); }
 
 
         searchView.classList.remove('hidden'); searchView.classList.add('active');
@@ -2095,6 +2180,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         artistView.classList.remove('active'); artistView.classList.add('hidden');
         if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
+        const glv3 = document.getElementById('likes-view'); if (glv3) { glv3.classList.remove('active'); glv3.classList.add('hidden'); }
 
 
         albumView.classList.remove('hidden'); albumView.classList.add('active');
@@ -2107,6 +2193,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         albumView.classList.remove('active'); albumView.classList.add('hidden');
         if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
+        const glv4 = document.getElementById('likes-view'); if (glv4) { glv4.classList.remove('active'); glv4.classList.add('hidden'); }
 
         artistView.classList.remove('hidden'); artistView.classList.add('active');
     }
@@ -2118,6 +2205,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         albumView.classList.remove('active'); albumView.classList.add('hidden');
         artistView.classList.remove('active'); artistView.classList.add('hidden');
+        const glv5 = document.getElementById('likes-view'); if (glv5) { glv5.classList.remove('active'); glv5.classList.add('hidden'); }
 
         playlistView.classList.remove('hidden'); playlistView.classList.add('active');
     }
@@ -2339,15 +2427,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     .where('name_lowercase', '<=', lowerQuery + '\uf8ff')
                     .limit(15)
                     .get();
-                
+
                 console.log('[Search] Cloud snapshot size:', snapshot.size);
                 const globalPlaylists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                
+
                 // Filter out playlists already in your personal library
                 const ownIds = new Set(allPlaylists.map(p => p.id));
                 const uniqueGlobal = globalPlaylists.filter(p => !ownIds.has(p.id));
                 console.log('[Search] Unique global results after filtering:', uniqueGlobal.length);
-                
+
                 if (uniqueGlobal.length > 0) {
                     appendGlobalSearchPlaylists(uniqueGlobal);
                     if (searchEmptyState) searchEmptyState.classList.add('hidden');
@@ -2360,20 +2448,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function appendGlobalSearchPlaylists(playlists) {
         if (!searchPlaylistList || !searchPlaylistsSection) return;
-        
+
         // Remove any previous global results to prevent duplicates during typing
         const existingGlobals = searchPlaylistList.querySelectorAll('[data-global="true"]');
         existingGlobals.forEach(el => el.remove());
 
         // Ensure the section is visible if we have global results
         searchPlaylistsSection.classList.remove('hidden');
-        
+
         // Add a separator or sub-title if needed, but for now just append
         playlists.forEach(pl => {
             const row = document.createElement('div');
             row.className = 'search-result-row';
             row.dataset.global = "true";
-            
+
             let coverHtml = '';
             if (pl.customCover) {
                 coverHtml = `<img src="${pl.customCover}" class="search-row-cover-img" alt="">`;
@@ -2427,7 +2515,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         playlists.forEach(pl => {
             const row = document.createElement('div');
             row.className = 'search-result-row';
-            
+
             let coverHtml = '';
             if (pl.customCover) {
                 coverHtml = `<img src="${pl.customCover}" class="search-row-cover-img" alt="">`;
@@ -2546,7 +2634,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const albumAndArtistKeys = Object.keys(manifest.entries).filter(k => k.startsWith('album:') || k.startsWith('artist:'));
             for (const key of albumAndArtistKeys) await _vcEvict(db, manifest, key);
             if (albumAndArtistKeys.length > 0) await _vcPut(db, { key: VC_MANIFEST, data: manifest });
-        }).catch(() => {});
+        }).catch(() => { });
 
         try {
             const serverRes = await fetch(`${serverBaseUrl}/api/audio`);
@@ -2673,11 +2761,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ── View Cache (IndexedDB, 15 MB budget, 12-hour TTL, LRU) ───────────────
-    const VC_DB_NAME   = 'SimonRelaysViewCache';
-    const VC_STORE     = 'views';
+    const VC_DB_NAME = 'SimonRelaysViewCache';
+    const VC_STORE = 'views';
     const VC_MAX_BYTES = 15 * 1024 * 1024; // 15 MB
-    const VC_TTL       = 12 * 60 * 60 * 1000; // 12 hours
-    const VC_MANIFEST  = '__manifest__';
+    const VC_TTL = 12 * 60 * 60 * 1000; // 12 hours
+    const VC_MANIFEST = '__manifest__';
     let _vcDb = null;
 
     function _openVCDB() {
@@ -2691,7 +2779,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             };
             req.onsuccess = (e) => { _vcDb = e.target.result; resolve(_vcDb); };
-            req.onerror   = (e) => reject(e.target.error);
+            req.onerror = (e) => reject(e.target.error);
         });
     }
 
@@ -2699,7 +2787,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return new Promise((resolve) => {
             const req = db.transaction(VC_STORE, 'readonly').objectStore(VC_STORE).get(key);
             req.onsuccess = (e) => resolve(e.target.result || null);
-            req.onerror   = () => resolve(null);
+            req.onerror = () => resolve(null);
         });
     }
 
@@ -2708,7 +2796,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const tx = db.transaction(VC_STORE, 'readwrite');
             tx.objectStore(VC_STORE).put(record);
             tx.oncomplete = () => resolve();
-            tx.onerror    = (e) => reject(e.target.error);
+            tx.onerror = (e) => reject(e.target.error);
         });
     }
 
@@ -2717,7 +2805,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const tx = db.transaction(VC_STORE, 'readwrite');
             tx.objectStore(VC_STORE).delete(key);
             tx.oncomplete = () => resolve();
-            tx.onerror    = () => resolve();
+            tx.onerror = () => resolve();
         });
     }
 
@@ -3561,6 +3649,112 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Playlist System ───────────────────────────────────────────────────────
 
+    // ── Likes System ──────────────────────────────────────────────────────────
+
+    async function fetchLikes() {
+        if (!currentUser || !window._fbFS) return;
+        try {
+            const snap = await window._fbFS.collection('users').doc(currentUser.uid).collection('likes').orderBy('timestamp', 'desc').get();
+            likedTracks.clear();
+            allLikedTracksCache = [];
+            
+            snap.forEach(doc => {
+                const data = doc.data();
+                likedTracks.add(data.url);
+                allLikedTracksCache.push(data);
+            });
+            
+            updateLikeButtonState();
+            
+            // If likes view is currently open, refresh it
+            const likesView = document.getElementById('likes-view');
+            if (likesView && !likesView.classList.contains('hidden')) {
+                renderLikesView();
+            }
+        } catch (error) {
+            console.error('[Likes] Failed to fetch likes', error);
+        }
+    }
+
+    async function toggleLike() {
+        if (!currentUser || !window._fbFS || !globalPlayingTrack) return;
+        
+        const track = globalPlayingTrack;
+        const trackUrl = track.url;
+        // Firebase paths cannot contain ".", so we encode the URL
+        const safeUrlId = encodeURIComponent(trackUrl).replace(/\./g, '%2E');
+        const likeRef = window._fbFS.collection('users').doc(currentUser.uid).collection('likes').doc(safeUrlId);
+        
+        const isLiked = likedTracks.has(trackUrl);
+        
+        try {
+            if (isLiked) {
+                likedTracks.delete(trackUrl);
+                allLikedTracksCache = allLikedTracksCache.filter(t => t.url !== trackUrl);
+                updateLikeButtonState();
+                await likeRef.delete();
+            } else {
+                likedTracks.add(trackUrl);
+                
+                const trackData = {
+                    ...track,
+                    timestamp: Date.now()
+                };
+                allLikedTracksCache.unshift(trackData); // Add to top
+                updateLikeButtonState();
+                await likeRef.set(trackData);
+            }
+            
+            // If likes view is currently open, refresh it
+            const likesView = document.getElementById('likes-view');
+            if (likesView && !likesView.classList.contains('hidden')) {
+                renderLikesView();
+            }
+            
+        } catch (error) {
+            console.error('[Likes] Failed to toggle like', error);
+            // Revert state on failure
+            if (isLiked) likedTracks.add(trackUrl); else likedTracks.delete(trackUrl);
+            updateLikeButtonState();
+        }
+    }
+
+    function updateLikeButtonState() {
+        const likeTrackBtn = document.getElementById('like-track-btn');
+        if (!likeTrackBtn) return;
+        
+        if (!currentUser || !globalPlayingTrack) {
+            likeTrackBtn.classList.remove('active');
+            return;
+        }
+        
+        const isLiked = likedTracks.has(globalPlayingTrack.url);
+        likeTrackBtn.classList.toggle('active', isLiked);
+    }
+    
+    function renderLikesView() {
+        const container = document.getElementById('likes-track-list');
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        if (allLikedTracksCache.length === 0) {
+            container.innerHTML = `
+                <div class="search-empty-state">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3;">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                    </svg>
+                    <div class="search-empty-text">No liked tracks yet</div>
+                    <div class="search-empty-sub">Tap the heart on any playing song to add it here</div>
+                </div>
+            `;
+            return;
+        }
+        
+        // Use standard renderer for track lists to retain cover art, context menus, and proper layout
+        renderTrackList(allLikedTracksCache, container, false, null, false, true);
+    }
+
     async function fetchPlaylists() {
         // Small delay to ensure any recent writes (like new playlist creation) have propagated
         await new Promise(r => setTimeout(r, 500));
@@ -3822,7 +4016,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const card = document.createElement('div');
             card.className = 'playlist-card';
             const isOwn = currentUser && pl.userId === currentUser.uid;
-            
+
             card.innerHTML = `
                 <div class="card-art-wrapper">
                     ${buildCollageHtml(pl)}
@@ -3902,15 +4096,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             ${coverHtml}
             <div class="album-hero-info">
                 <div class="album-hero-label">Playlist</div>
-                ${isOwnPlaylist ? 
-                    `<input class="playlist-title-editable album-hero-title" value="${playlist.name}" spellcheck="false">` :
-                    `<div class="album-hero-title">${playlist.name}</div>`
-                }
+                ${isOwnPlaylist ?
+                `<input class="playlist-title-editable album-hero-title" value="${playlist.name}" spellcheck="false">` :
+                `<div class="album-hero-title">${playlist.name}</div>`
+            }
                 <div class="album-hero-meta">
-                    ${(playlist.userPhotoURL || (isOwnPlaylist && currentUser.photoURL)) ? 
-                        `<img class="artist-avatar" src="${playlist.userPhotoURL || currentUser.photoURL}" alt="">` :
-                        `<img class="artist-avatar" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIwIDIxdi0yYTRgMCAwIDAtNC00SDhhNCg0IDAgMCAwLTQgNHYyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSI3IiByPSI0Ii8+PC9zdmc+" alt="">`
-                    }
+                    ${(playlist.userPhotoURL || (isOwnPlaylist && currentUser.photoURL)) ?
+                `<img class="artist-avatar" src="${playlist.userPhotoURL || currentUser.photoURL}" alt="">` :
+                `<img class="artist-avatar" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIwIDIxdi0yYTRgMCAwIDAtNC00SDhhNCg0IDAgMCAwLTQgNHYyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSI3IiByPSI0Ii8+PC9zdmc+" alt="">`
+            }
                     <strong>${playlist.userName || (isOwnPlaylist ? (currentUser.displayName || 'You') : 'Shared')}</strong> · ${songCountStr}${durationStr}
                 </div>
                 <div class="album-hero-actions">
@@ -3941,7 +4135,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 input.onchange = async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
-                    
+
                     const reader = new FileReader();
                     reader.onload = async (re) => {
                         const img = new Image();
@@ -4010,7 +4204,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                     saveBtn.disabled = true;
                     saveBtn.textContent = 'Saving...';
-                    
+
                     try {
                         const newName = `${playlist.name} (Shared)`;
                         const newPl = await createPlaylist(newName);
@@ -4059,7 +4253,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         addToPlaylistDropdown.appendChild(queueDiv);
 
         const ownPlaylists = allPlaylists.filter(pl => currentUser && pl.userId === currentUser.uid);
-        
+
         ownPlaylists.forEach(pl => {
             const item = document.createElement('div');
             item.className = 'dropdown-item';
@@ -4120,7 +4314,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const trackToAdd = pendingAddTrack; // capture before modal close nulls it
         closeCreatePlaylistModal();
         const newPl = await createPlaylist(name);
-        
+
         // Small delay to ensure Firestore propagation before we navigate/fetch
         await new Promise(r => setTimeout(r, 800));
 
@@ -4240,6 +4434,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 bottomOfflineBtn.title = 'Remote Source';
             }
         }
+        
+        updateLikeButtonState();
 
         bottomTitle.textContent = title;
         bottomArtist.textContent = artist;
@@ -4279,8 +4475,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        if (immersiveTitle) immersiveTitle.textContent = title;
-        if (immersiveArtist) immersiveArtist.textContent = artist;
+        if (immersiveTitle) {
+            immersiveTitle.textContent = title;
+            immersiveTitle.onclick = () => {
+                const albumName = track.metadata && track.metadata.album ? track.metadata.album : null;
+                if (albumName && albumsData[albumName]) {
+                    hideImmersiveOverlay();
+                    openAlbumView(albumsData[albumName]);
+                }
+            };
+        }
+        if (immersiveArtist) {
+            immersiveArtist.textContent = artist;
+            immersiveArtist.onclick = () => {
+                if (artist && artist !== 'Unknown Artist') {
+                    hideImmersiveOverlay();
+                    openArtistView(artist);
+                }
+            };
+        }
 
         const album = track.metadata && track.metadata.album ? track.metadata.album : '';
         const duration = track.metadata && track.metadata.duration ? track.metadata.duration : 0;
@@ -4338,7 +4551,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const blob = await response.blob();
             await saveTrackToIDB(track.url, blob, track.metadata);
-            
+
             // Mark as offline in the local map
             downloadedTracksMap.set(track.url, 'indexeddb');
             console.log('[PWA] Track saved to IndexedDB:', track.url);
@@ -4633,6 +4846,68 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
     });
+
+    // Desktop Sidebar Toggle
+    const desktopSidebarToggle = document.getElementById('desktop-sidebar-toggle');
+    const desktopSidebar = document.getElementById('desktop-sidebar');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
+    
+    if (desktopSidebarToggle && desktopSidebar && sidebarOverlay) {
+        desktopSidebarToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isActive = desktopSidebar.classList.toggle('active');
+            sidebarOverlay.classList.toggle('active', isActive);
+        });
+
+        // Close sidebar if clicking outside
+        document.addEventListener('click', (e) => {
+            if (desktopSidebar.classList.contains('active') && 
+                !desktopSidebar.contains(e.target) && 
+                e.target !== desktopSidebarToggle &&
+                !desktopSidebarToggle.contains(e.target)) {
+                desktopSidebar.classList.remove('active');
+                sidebarOverlay.classList.remove('active');
+            }
+        });
+    }
+
+    // Likes System Listeners
+    const likeTrackBtn = document.getElementById('like-track-btn');
+    if (likeTrackBtn) {
+        likeTrackBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleLike();
+        });
+    }
+
+    const sidebarLikesBtn = document.getElementById('sidebar-likes-btn');
+    const likesView = document.getElementById('likes-view');
+
+    if (sidebarLikesBtn && likesView) {
+        sidebarLikesBtn.addEventListener('click', () => {
+            if (!currentUser) {
+                // Must be logged in to view likes
+                if (loginOverlay) loginOverlay.classList.remove('hidden');
+                return;
+            }
+            
+            // Hide other views manually
+            if (homeView) { homeView.classList.remove('active'); homeView.classList.add('hidden'); }
+            if (searchView) { searchView.classList.remove('active'); searchView.classList.add('hidden'); }
+            if (albumView) { albumView.classList.remove('active'); albumView.classList.add('hidden'); }
+            if (artistView) { artistView.classList.remove('active'); artistView.classList.add('hidden'); }
+            if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
+            
+            // Show likes view
+            likesView.classList.remove('hidden');
+            likesView.classList.add('active');
+            renderLikesView();
+            
+            // Close sidebar
+            if (desktopSidebar) desktopSidebar.classList.remove('active');
+            if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+        });
+    }
 
     // ── Initial State Restoration ───────────────────────────────────────────
     try {

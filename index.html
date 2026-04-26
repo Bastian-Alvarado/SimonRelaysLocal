@@ -34,9 +34,20 @@
         </div>
     </div>
 
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+    <div id="desktop-sidebar" class="desktop-sidebar">
+        <ul class="desktop-sidebar-menu">
+            <li class="sidebar-item" id="sidebar-likes-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+                <span>Likes</span>
+            </li>
+        </ul>
+    </div>
+
     <header class="app-header">
         <div class="header-left">
-            <h1 class="logo">Simon<span class="logo-accent">Relays</span></h1>
+            <h1 class="logo" id="desktop-sidebar-toggle" style="cursor: pointer; transition: opacity 0.2s;">Simon<span class="logo-accent">Relays</span></h1>
         </div>
 
         <div class="header-center">
@@ -185,6 +196,15 @@
         </div>
 
 
+        <!-- Likes View -->
+        <div id="likes-view" class="view hidden">
+            <div class="view-header" style="padding-top: 40px; padding-bottom: 20px;">
+                <h1 class="view-title" style="font-size: 48px; margin-bottom: 8px;">Liked Tracks</h1>
+                <p style="color: var(--text-secondary); font-size: 14px;">Songs you've loved</p>
+            </div>
+            <div id="likes-track-list" class="track-list" style="padding: 0 40px 100px;"></div>
+        </div>
+
         <!-- Album View -->
         <div id="album-view" class="view hidden">
             <div class="album-top-bar">
@@ -257,6 +277,9 @@
                 <button id="toggle-art-btn" class="immersive-control-btn" title="Toggle Album Art">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
                 </button>
+                <button id="immersive-add-to-playlist-btn" class="immersive-control-btn immersive-add-to-playlist-btn" title="Add to Playlist">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
                 <button id="close-immersive-btn" class="close-immersive-btn" title="Close Fullscreen">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"></path></svg>
                 </button>
@@ -273,6 +296,18 @@
                 <div class="immersive-right">
                     <div id="immersive-lyrics-container" class="lyrics-container immersive-lyrics">
                         <!-- Lyrics populate here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Up Next badge — desktop only, bottom-right above the player bar -->
+            <div id="immersive-up-next" class="immersive-up-next hidden">
+                <div class="immersive-up-next-label">Up Next</div>
+                <div class="immersive-up-next-row">
+                    <img id="immersive-up-next-art" class="immersive-up-next-art" src="" alt="">
+                    <div class="immersive-up-next-info">
+                        <div id="immersive-up-next-title" class="immersive-up-next-title"></div>
+                        <div id="immersive-up-next-artist" class="immersive-up-next-artist"></div>
                     </div>
                 </div>
             </div>
@@ -374,6 +409,11 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"></circle>
                     <path class="check-path" d="M8 12.5l3 3 5-6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+            </button>
+            <button id="like-track-btn" class="icon-button like-track-btn" style="margin-left:8px; display: none;" title="Like Track">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
                 </svg>
             </button>
         </div>
