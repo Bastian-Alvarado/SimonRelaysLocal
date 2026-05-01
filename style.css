@@ -2930,6 +2930,11 @@ body {
 }
 
 @media (max-width: 768px) {
+    .sidebar-overlay {
+        bottom: 140px;
+        top: 0;
+    }
+
     .desktop-sidebar {
         top: 0;
         bottom: 140px;
