@@ -14,10 +14,20 @@ let serverBaseUrl = isSelfHosted
 const deviceId = localStorage.getItem('deviceId') || crypto.randomUUID();
 localStorage.setItem('deviceId', deviceId);
 
-function getZoomScale() {
-    const zoom = document.documentElement.style.zoom;
-    if (!zoom) return 1;
-    return parseFloat(zoom) / 100;
+let albumCoverCache = new Map();
+
+function getSharedCoverUrl(relativePath, artist, album) {
+    if (!relativePath) return null;
+    const cleanArtist = artist || 'Unknown Artist';
+    const cleanAlbum = album || 'Unknown Album';
+    if (cleanArtist === 'Unknown Artist' && cleanAlbum === 'Unknown Album') {
+        return `${serverBaseUrl}/api/cover?path=${encodeURIComponent(relativePath)}`;
+    }
+    const cacheKey = `${cleanArtist}|${cleanAlbum}`;
+    if (albumCoverCache.has(cacheKey)) return albumCoverCache.get(cacheKey);
+    const url = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(relativePath)}`;
+    albumCoverCache.set(cacheKey, url);
+    return url;
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -673,7 +683,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         immersiveUpNextArtist.textContent = artist;
 
         if (upNext.metadata && upNext.metadata.hasCover && upNext.relativePath) {
-            immersiveUpNextArt.src = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(upNext.relativePath)}`;
+            immersiveUpNextArt.src = getSharedCoverUrl(upNext.relativePath, upNext.metadata.artist, upNext.metadata.album);
             immersiveUpNextArt.style.display = 'block';
         } else {
             immersiveUpNextArt.style.display = 'none';
@@ -1050,7 +1060,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Show current album cover
         if (albumInfo.coverTrackPath) {
-            metadataArtPreview.src = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(albumInfo.coverTrackPath)}&t=${Date.now()}`;
+            metadataArtPreview.src = getSharedCoverUrl(albumInfo.coverTrackPath, albumInfo.artist, albumInfo.name);
             metadataArtPreview.style.display = 'block';
         } else {
             metadataArtPreview.src = '';
@@ -1314,10 +1324,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const val = document.getElementById('server-url-input').value.trim().replace(/\/+$/, '');
             if (val && val !== DEFAULT_SERVER_URL) localStorage.setItem('serverUrl', val);
             else localStorage.removeItem('serverUrl');
+            albumCoverCache.clear();
             location.reload();
         });
         const resetBtn = document.getElementById('server-url-reset-btn');
-        if (resetBtn) resetBtn.addEventListener('click', () => { localStorage.removeItem('serverUrl'); location.reload(); });
+        if (resetBtn) resetBtn.addEventListener('click', () => { localStorage.removeItem('serverUrl'); albumCoverCache.clear(); location.reload(); });
 
         // Local sources: Add folder (Native Picker)
         document.getElementById('local-path-add-btn').addEventListener('click', async () => {
@@ -2621,7 +2632,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 const coverTrack = pl.tracks ? pl.tracks.find(t => t.metadata && t.metadata.hasCover) : null;
                 coverHtml = coverTrack
-                    ? `<img src="${serverBaseUrl}/api/cover?path=${encodeURIComponent(coverTrack.relativePath)}" class="search-row-cover-img" alt="">`
+                    ? `<img src="${getSharedCoverUrl(coverTrack.relativePath, coverTrack.metadata.artist, coverTrack.metadata.album)}" class="search-row-cover-img" alt="">`
                     : `<div class="search-row-cover-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div>`;
             }
 
@@ -2791,7 +2802,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         let artHtml = `<div class="album-card-art"></div>`;
         if (albumInfo.coverTrackPath) {
-            const pictureUrl = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(albumInfo.coverTrackPath)}`;
+            const pictureUrl = getSharedCoverUrl(albumInfo.coverTrackPath, albumInfo.artist, albumInfo.name);
             artHtml = `<img src="${pictureUrl}" class="album-card-art" alt="Album Cover">`;
         }
 
@@ -3006,7 +3017,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         let coverHtml = `<div class="album-hero-cover" style="background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));"></div>`;
         if (albumInfo.coverTrackPath) {
-            const pictureUrl = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(albumInfo.coverTrackPath)}`;
+            const pictureUrl = getSharedCoverUrl(albumInfo.coverTrackPath, albumInfo.artist, albumInfo.name);
             coverHtml = `<img src="${pictureUrl}" class="album-hero-cover" alt="Album Cover">`;
             if (albumView) albumView.style.setProperty('--view-bg-image', `url("${pictureUrl}")`);
         } else {
@@ -3195,10 +3206,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </button>`;
 
             let coverHtml = '';
-            if (track.metadata && track.metadata.coverUrl) {
-                coverHtml = `<div class="track-item-cover"><img src="${track.metadata.coverUrl}" crossorigin="anonymous" alt="cover"></div>`;
-            } else if (track.metadata && track.metadata.hasCover) {
-                const pictureUrl = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(track.relativePath)}`;
+            if (track.metadata && track.metadata.hasCover) {
+                const pictureUrl = getSharedCoverUrl(track.relativePath, track.metadata.artist, track.metadata.album);
                 coverHtml = `<div class="track-item-cover"><img src="${pictureUrl}" alt="cover"></div>`;
             } else {
                 coverHtml = `<div class="track-item-cover"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div>`;
@@ -3434,7 +3443,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             card.className = 'album-card';
             let coverHtml = `<div class="album-card-art"></div>`;
             if (albumInfo.coverTrackPath) {
-                const pictureUrl = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(albumInfo.coverTrackPath)}`;
+                const pictureUrl = getSharedCoverUrl(albumInfo.coverTrackPath, albumInfo.artist, albumInfo.name);
                 coverHtml = `<img src="${pictureUrl}" class="album-card-art" alt="Album Cover">`;
             }
             card.innerHTML = `
@@ -4237,7 +4246,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         let cells = '';
         for (let i = 0; i < 4; i++) {
             if (coverTracks[i]) {
-                const url = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(coverTracks[i].relativePath)}`;
+                const url = getSharedCoverUrl(coverTracks[i].relativePath, coverTracks[i].metadata.artist, coverTracks[i].metadata.album);
                 cells += `<img src="${url}" alt="">`;
             } else {
                 cells += `<div class="playlist-collage-cell"><svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div>`;
@@ -4321,7 +4330,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             const firstCoverTrack = playlist.tracks.find(t => t.metadata && t.metadata.hasCover);
             if (firstCoverTrack) {
-                const url = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(firstCoverTrack.relativePath)}`;
+                const url = getSharedCoverUrl(firstCoverTrack.relativePath, firstCoverTrack.metadata.artist, firstCoverTrack.metadata.album);
                 bgUrl = `url("${url}")`;
             }
         }
@@ -4722,7 +4731,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (e) { }
 
         if (track.metadata && track.metadata.hasCover) {
-            const pictureUrl = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(track.relativePath)}`;
+            const pictureUrl = getSharedCoverUrl(track.relativePath, track.metadata.artist, track.metadata.album);
             bottomArtWrapper.innerHTML = `<img src="${pictureUrl}" alt="Album Art">`;
             if (immersiveBg) immersiveBg.src = pictureUrl;
             if (immersiveArt) {
