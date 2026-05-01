@@ -35,6 +35,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const savedZoom = localStorage.getItem('zoomLevel') || '100';
     document.documentElement.style.zoom = savedZoom + '%';
 
+    function getZoomScale() {
+        // Standardize zoom scale retrieval for absolute positioning
+        return parseFloat(document.documentElement.style.zoom) / 100 || 1;
+    }
+
     // Views
     const homeView = document.getElementById('home-view');
     const albumView = document.getElementById('album-view');
@@ -5130,7 +5135,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const item = trackItems[playingIndex];
 
                     // Calculate relative scroll position to avoid bubbling up to body
-                    const relativeTop = item.getBoundingClientRect().top - container.getBoundingClientRect().top;
+                    const scale = getZoomScale();
+                    const relativeTop = (item.getBoundingClientRect().top - container.getBoundingClientRect().top) / scale;
                     const scrollPosition = container.scrollTop + relativeTop - (container.clientHeight / 2) + (item.clientHeight / 2);
 
                     container.scrollTo({
