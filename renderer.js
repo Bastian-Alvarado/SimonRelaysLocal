@@ -14,7 +14,17 @@ let serverBaseUrl = isSelfHosted
 const deviceId = localStorage.getItem('deviceId') || crypto.randomUUID();
 localStorage.setItem('deviceId', deviceId);
 
+function getZoomScale() {
+    const zoom = document.documentElement.style.zoom;
+    if (!zoom) return 1;
+    return parseFloat(zoom) / 100;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+    // Apply saved zoom level
+    const savedZoom = localStorage.getItem('zoomLevel') || '100';
+    document.documentElement.style.zoom = savedZoom + '%';
+
     // Views
     const homeView = document.getElementById('home-view');
     const albumView = document.getElementById('album-view');
@@ -949,8 +959,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentTrackItem = trackItem;
 
         const rect = sourceBtn.getBoundingClientRect();
-        trackContextMenu.style.top = `${rect.bottom + 5}px`;
-        trackContextMenu.style.left = `${rect.right - 180}px`;
+        const scale = getZoomScale();
+        trackContextMenu.style.top = `${(rect.bottom / scale) + 5}px`;
+        trackContextMenu.style.left = `${(rect.right / scale) - 180}px`;
 
         // Permission Gating: Only owners can edit info or remove from a specific playlist
         if (canEdit) {
@@ -1265,22 +1276,40 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
 
             <div class="settings-section">
-                <div class="settings-section-title">Cloud Library</div>
+                <div class="settings-section-title">Display</div>
                 <div class="settings-row">
                     <div class="settings-row-info">
-                        <div class="settings-row-label">Upload to Server</div>
-                        <div class="settings-row-sub">Add music directly to your Tailscale server. Files will be accessible on all your devices.</div>
+                        <div class="settings-row-label">Zoom Level</div>
+                        <div class="settings-row-sub">Adjust the interface scale. Current: <span id="zoom-value-label">${localStorage.getItem('zoomLevel') || '100'}%</span></div>
                     </div>
-                    <div class="settings-input-group">
-                        <button id="cloud-upload-btn" class="settings-save-btn">Select Files</button>
-                        <input type="file" id="cloud-upload-input" multiple accept="audio/*" style="display: none;">
+                    <div class="settings-input-group zoom-slider-group">
+                        <span class="zoom-min-label">70%</span>
+                        <input id="zoom-range-input" type="range" min="70" max="130" step="5" value="${localStorage.getItem('zoomLevel') || '100'}" class="settings-range-input">
+                        <span class="zoom-max-label">130%</span>
+                        <button id="zoom-reset-btn" class="zoom-reset-btn">Reset</button>
                     </div>
-                    <div id="cloud-upload-status" class="local-path-status" style="margin-top: 10px;"></div>
                 </div>
             </div>
         `;
 
         // Network section handlers
+        const zoomInput = document.getElementById('zoom-range-input');
+        const zoomLabel = document.getElementById('zoom-value-label');
+        if (zoomInput && zoomLabel) {
+            zoomInput.addEventListener('input', (e) => {
+                const val = e.target.value;
+                zoomLabel.textContent = `${val}%`;
+                document.documentElement.style.zoom = `${val}%`;
+                localStorage.setItem('zoomLevel', val);
+            });
+            document.getElementById('zoom-reset-btn').addEventListener('click', () => {
+                zoomInput.value = 100;
+                zoomLabel.textContent = '100%';
+                document.documentElement.style.zoom = '100%';
+                localStorage.setItem('zoomLevel', '100');
+            });
+        }
+
         document.getElementById('server-url-save-btn').addEventListener('click', () => {
             const val = document.getElementById('server-url-input').value.trim().replace(/\/+$/, '');
             if (val && val !== DEFAULT_SERVER_URL) localStorage.setItem('serverUrl', val);
@@ -4520,8 +4549,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Position near button
         const rect = anchorEl.getBoundingClientRect();
-        addToPlaylistDropdown.style.top = `${rect.bottom + 6}px`;
-        addToPlaylistDropdown.style.left = `${Math.min(rect.left, window.innerWidth - 270)}px`;
+        const scale = getZoomScale();
+        addToPlaylistDropdown.style.top = `${(rect.bottom / scale) + 6}px`;
+        addToPlaylistDropdown.style.left = `${Math.min(rect.left / scale, (window.innerWidth / scale) - 270)}px`;
         addToPlaylistDropdown.classList.remove('hidden');
     }
 

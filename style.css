@@ -46,11 +46,17 @@
     pointer-events: none;
 }
 
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
 body {
     font-family: 'Montserrat', sans-serif;
     background-color: var(--bg-color);
     color: var(--text-primary);
-    height: 100vh;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -212,7 +218,7 @@ body {
     justify-content: center;
     align-items: flex-end;
     /* right-align to push near lyrics */
-    max-width: 50%;
+    max-width: 40%;
 }
 
 .immersive-art {
@@ -269,12 +275,12 @@ body {
 }
 
 .immersive-right {
-    flex: 1;
+    flex: 1.5; /* Give lyrics more weight */
     display: flex;
     flex-direction: column;
     justify-content: center;
     height: 100%;
-    max-width: 50%;
+    max-width: 65%;
 }
 
 .immersive-lyrics {
@@ -1650,9 +1656,11 @@ body {
     color: white;
     opacity: 0.4;
     transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    transform-origin: left center;
+    transform-origin: center center;
+    padding: 0 40px;
     cursor: pointer;
     text-align: center;
+    width: 100%;
 }
 
 .lyric-line:hover {
@@ -2177,6 +2185,93 @@ body {
 
 .settings-save-btn:active {
     transform: scale(0.96);
+}
+
+/* ── Zoom Slider Styles ─────────────────────────────────────────────────── */
+.zoom-slider-group {
+    width: 100%;
+    margin-top: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 15px 20px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.zoom-min-label, .zoom-max-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    min-width: 35px;
+}
+
+.settings-range-input {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+}
+
+.settings-range-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(244, 63, 94, 0.4);
+    transition: transform 0.2s, background 0.2s;
+}
+
+.settings-range-input::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    background: var(--accent-hover);
+}
+
+.settings-range-input::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: var(--accent);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(244, 63, 94, 0.4);
+    transition: transform 0.2s, background 0.2s;
+}
+
+.settings-range-input::-moz-range-thumb:hover {
+    transform: scale(1.2);
+    background: var(--accent-hover);
+}
+
+#zoom-value-label {
+    color: var(--accent);
+    font-weight: 800;
+}
+
+.zoom-reset-btn {
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.zoom-reset-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .settings-reset-btn {
@@ -2735,7 +2830,7 @@ body {
     background: rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    z-index: 850;
+    z-index: 6000;
     /* Under sidebar, above content */
     opacity: 0;
     pointer-events: none;
@@ -2759,7 +2854,7 @@ body {
     backdrop-filter: blur(28px) saturate(1.6);
     -webkit-backdrop-filter: blur(28px) saturate(1.6);
     border-right: 1px solid rgba(255, 255, 255, 0.08);
-    z-index: 900;
+    z-index: 6001;
     /* Extremely high to cover albums and content, but under modals */
     padding: 24px 16px;
     transform: translateX(-100%);
