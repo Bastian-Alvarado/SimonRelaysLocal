@@ -1286,6 +1286,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
 
             <div class="settings-section">
+                <div class="settings-section-title">Cloud Library</div>
+                <div class="settings-row">
+                    <div class="settings-row-info">
+                        <div class="settings-row-label">Upload to Server</div>
+                        <div class="settings-row-sub">Upload local MP3 files to your server so they are available on all your devices.</div>
+                    </div>
+                    <div class="settings-input-group">
+                        <input type="file" id="cloud-upload-input" multiple accept="audio/*" style="display: none;">
+                        <button id="cloud-upload-btn" class="settings-save-btn">Select Files</button>
+                    </div>
+                    <div id="cloud-upload-status" class="local-path-status"></div>
+                </div>
+            </div>
+
+            <div class="settings-section">
                 <div class="settings-section-title">Display</div>
                 <div class="settings-row">
                     <div class="settings-row-info">
