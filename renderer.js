@@ -4,8 +4,11 @@ if (CURRENT_SERVER_URL === 'http://localhost:3000') {
     localStorage.removeItem('serverUrl'); // Clear old HTTP default to use HTTPS default
 }
 
-const isSelfHosted = (window.location.protocol.startsWith('http')) &&
+const isServedFromServer = (window.location.protocol.startsWith('http')) &&
     (window.location.hostname !== 'localhost' && !window.location.hostname.startsWith('127.'));
+// Also treat localhost as self-hosted when the page itself is served from the server (not file:// or Electron)
+const isSelfHosted = isServedFromServer ||
+    (window.location.protocol.startsWith('http') && window.location.port && !window.electronAPI);
 
 let serverBaseUrl = (localStorage.getItem('serverUrl') || (isSelfHosted ? '' : DEFAULT_SERVER_URL)).replace(/\/+$/, '');
 
