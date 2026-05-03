@@ -7,9 +7,7 @@ if (CURRENT_SERVER_URL === 'http://localhost:3000') {
 const isSelfHosted = (window.location.protocol.startsWith('http')) &&
     (window.location.hostname !== 'localhost' && !window.location.hostname.startsWith('127.'));
 
-let serverBaseUrl = isSelfHosted
-    ? ''  // same-origin, use relative URLs
-    : (localStorage.getItem('serverUrl') || DEFAULT_SERVER_URL).replace(/\/+$/, '');
+let serverBaseUrl = (localStorage.getItem('serverUrl') || (isSelfHosted ? '' : DEFAULT_SERVER_URL)).replace(/\/+$/, '');
 
 const deviceId = localStorage.getItem('deviceId') || crypto.randomUUID();
 localStorage.setItem('deviceId', deviceId);
@@ -475,6 +473,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ─────────────────────────────────────────────────────────────────────────
     let pendingUploads = new Set();  // url
     let currentActiveBlobUrl = null;
+    let currentActiveCoverUrl = null;
 
     // ── IndexedDB Configuration (PWA Offline Support) ───────────────────────
     let db = null;
@@ -499,12 +498,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    async function saveTrackToIDB(trackUrl, blob, metadata) {
+    async function saveTrackToIDB(trackUrl, blob, metadata, coverBlob = null, lyrics = null) {
         const db = await initDB();
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(['tracks'], 'readwrite');
             const store = transaction.objectStore('tracks');
-            const request = store.put({ trackUrl, blob, metadata, savedAt: Date.now() });
+            const request = store.put({ trackUrl, blob, metadata, coverBlob, lyrics, savedAt: Date.now() });
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
@@ -3515,7 +3514,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return parsed;
     }
 
-    async function fetchLyrics(title, artist, album, duration) {
+    async function fetchLyrics(title, artist, album, duration, cachedLyrics = null) {
         lyricsContainer.classList.remove('editor-mode');
         lyricsContainer.innerHTML = '<div class="lyrics-placeholder">Loading lyrics...</div>';
         if (immersiveLyricsContainer) {
@@ -3531,6 +3530,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentLyricsAlbum = album || '';
         currentLyricsDuration = duration || 0;
         renderLyricsActionBar(false, false);
+
+        // 0. Check cached lyrics from IDB (passed in)
+        if (cachedLyrics) {
+            if (cachedLyrics.syncedLyrics) {
+                lyricsData = parseLrc(cachedLyrics.syncedLyrics);
+                renderLyrics();
+                renderLyricsActionBar(true, false);
+            } else {
+                plainLyricsCache = cachedLyrics.plainLyrics || '';
+                showLyricsNoSyncState();
+            }
+            return;
+        }
 
         // 1. Check localStorage for user-created lyrics first
         if (lyricsTrackUrl) {
@@ -4708,6 +4720,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (saved && saved.blob) {
                         currentActiveBlobUrl = URL.createObjectURL(saved.blob);
                         fullAudioUrl = currentActiveBlobUrl;
+
+                        // Pass cached data forward for UI display and lyrics
+                        track._cachedCover = saved.coverBlob;
+                        track._cachedLyrics = saved.lyrics;
+
                         console.log('[PWA] Playing from offline storage:', track.url);
                     }
                 } catch (e) {
@@ -4750,7 +4767,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } catch (e) { }
 
-        if (track.metadata && track.metadata.hasCover) {
+        if (currentActiveCoverUrl) {
+            URL.revokeObjectURL(currentActiveCoverUrl);
+            currentActiveCoverUrl = null;
+        }
+
+        if (track._cachedCover) {
+            currentActiveCoverUrl = URL.createObjectURL(track._cachedCover);
+            const pictureUrl = currentActiveCoverUrl;
+            bottomArtWrapper.innerHTML = `<img src="${pictureUrl}" alt="Album Art">`;
+            if (immersiveBg) immersiveBg.src = pictureUrl;
+            if (immersiveArt) {
+                immersiveArt.src = pictureUrl;
+                immersiveArt.style.display = 'block';
+            }
+            updatePlayerBarDynamicColor(pictureUrl);
+        } else if (track.metadata && track.metadata.hasCover) {
             const pictureUrl = getSharedCoverUrl(track.relativePath, track.metadata.artist, track.metadata.album);
             bottomArtWrapper.innerHTML = `<img src="${pictureUrl}" alt="Album Art">`;
             if (immersiveBg) immersiveBg.src = pictureUrl;
@@ -4795,7 +4827,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const album = track.metadata && track.metadata.album ? track.metadata.album : '';
         const duration = track.metadata && track.metadata.duration ? track.metadata.duration : 0;
-        fetchLyrics(title, artist, album, duration);
+        fetchLyrics(title, artist, album, duration, track._cachedLyrics);
 
         updateMediaSession(track);
 
@@ -4844,17 +4876,45 @@ document.addEventListener('DOMContentLoaded', async () => {
         refreshCurrentView();
 
         try {
+            // 1. Fetch Audio
             const response = await fetch(url);
             if (!response.ok) throw new Error('Network response was not ok');
-
             const blob = await response.blob();
+
+            // 2. Fetch Cover (if applicable)
+            let coverBlob = null;
+            if (track.metadata && track.metadata.hasCover) {
+                try {
+                    const coverUrl = getSharedCoverUrl(track.relativePath, track.metadata.artist, track.metadata.album);
+                    const cRes = await fetch(coverUrl);
+                    if (cRes.ok) coverBlob = await cRes.blob();
+                } catch (e) { console.error('[PWA] Cover download failed', e); }
+            }
+
+            // 3. Fetch Lyrics
+            let lyrics = null;
+            try {
+                const title = (track.metadata && track.metadata.title) ? track.metadata.title : track.filename;
+                const artist = (track.metadata && track.metadata.artist) ? track.metadata.artist : 'Unknown Artist';
+                const album = (track.metadata && track.metadata.album) ? track.metadata.album : '';
+                const duration = (track.metadata && track.metadata.duration) ? track.metadata.duration : 0;
+                
+                let lUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(title)}&artist_name=${encodeURIComponent(artist)}`;
+                if (album) lUrl += `&album_name=${encodeURIComponent(album)}`;
+                if (duration) lUrl += `&duration=${Math.round(duration)}`;
+                
+                const lRes = await fetch(lUrl);
+                if (lRes.ok) lyrics = await lRes.json();
+            } catch (e) { console.error('[PWA] Lyrics download failed', e); }
+
+            // 4. Save to IDB
             // Include relativePath in metadata so we can show covers even if library isn't loaded
             const saveMetadata = { ...track.metadata, relativePath: track.relativePath };
-            await saveTrackToIDB(track.url, blob, saveMetadata);
+            await saveTrackToIDB(track.url, blob, saveMetadata, coverBlob, lyrics);
 
             // Mark as offline in the local map
             downloadedTracksMap.set(track.url, 'indexeddb');
-            console.log('[PWA] Track saved to IndexedDB:', track.url);
+            console.log('[PWA] Track saved to IndexedDB (with assets):', track.url);
         } catch (e) {
             console.error('[PWA] Download failed', e);
             alert('Failed to download track for offline use.');
