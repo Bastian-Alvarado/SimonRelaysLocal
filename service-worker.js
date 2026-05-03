@@ -1,11 +1,11 @@
 const CACHE_NAME = 'simonrelays-desktop-pwa-v1';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/renderer.js',
-  '/manifest.json',
-  '/icon.svg'
+  './',
+  'index.html',
+  'style.css',
+  'renderer.js',
+  'manifest.json',
+  'icon.svg'
 ];
 
 self.addEventListener('install', (e) => {
