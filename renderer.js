@@ -1249,6 +1249,40 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         body.innerHTML = `
             <div class="settings-section">
+                <div class="settings-section-title">Audio Quality</div>
+                <div class="settings-row" style="flex-direction: row; flex-wrap: wrap; gap: 24px;">
+                    <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 12px;">
+                        <div class="settings-row-info">
+                            <div class="settings-row-label">Stream Quality</div>
+                            <div class="settings-row-sub">Used when playing over the network.</div>
+                        </div>
+                        <div class="settings-input-group">
+                            <select id="setting-stream-quality" class="settings-text-input" style="width: 100%; cursor: pointer; background-color: #1a1a20; color: white;">
+                                <option value="original">Original</option>
+                                <option value="320">320kbps</option>
+                                <option value="192">192kbps</option>
+                                <option value="128">128kbps</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 12px;">
+                        <div class="settings-row-info">
+                            <div class="settings-row-label">Download Quality</div>
+                            <div class="settings-row-sub">Used when saving for offline play.</div>
+                        </div>
+                        <div class="settings-input-group">
+                            <select id="setting-download-quality" class="settings-text-input" style="width: 100%; cursor: pointer; background-color: #1a1a20; color: white;">
+                                <option value="original">Original</option>
+                                <option value="320">320kbps</option>
+                                <option value="192">192kbps</option>
+                                <option value="128">128kbps</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
                 <div class="settings-section-title">Network</div>
                 <div class="settings-row">
                     <div class="settings-row-info">
@@ -1323,6 +1357,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
             </div>
         `;
+
+        // Audio Quality Handlers
+        const streamQualitySelect = document.getElementById('setting-stream-quality');
+        const downloadQualitySelect = document.getElementById('setting-download-quality');
+        if (streamQualitySelect) {
+            streamQualitySelect.value = localStorage.getItem('streamQuality') || 'original';
+            streamQualitySelect.addEventListener('change', (e) => {
+                localStorage.setItem('streamQuality', e.target.value);
+            });
+        }
+        if (downloadQualitySelect) {
+            downloadQualitySelect.value = localStorage.getItem('downloadQuality') || 'original';
+            downloadQualitySelect.addEventListener('change', (e) => {
+                localStorage.setItem('downloadQuality', e.target.value);
+            });
+        }
 
         // Network section handlers
         const zoomInput = document.getElementById('zoom-range-input');
@@ -4699,6 +4749,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 
+    function getTrackUrlForQuality(track, type = 'stream') {
+        const qualityPref = type === 'stream' 
+            ? (localStorage.getItem('streamQuality') || 'original')
+            : (localStorage.getItem('downloadQuality') || 'original');
+            
+        if (track.qualities && track.qualities[qualityPref]) {
+            // track.qualities urls are already absolute paths or /api paths relative to serverBaseUrl
+            const qualityUrl = track.qualities[qualityPref].url;
+            return qualityUrl.startsWith('http') ? qualityUrl : `${serverBaseUrl}${qualityUrl}`;
+        }
+        return `${serverBaseUrl}${track.url}`;
+    }
+
     async function playTrack(track, title, artist) {
         addToHistory(track);
         if (window.electronAPI) {
@@ -4711,7 +4774,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const localPath = downloadedTracksMap.get(track.url);
-        let fullAudioUrl = `${serverBaseUrl}${track.url}`;
+        let fullAudioUrl = getTrackUrlForQuality(track, 'stream');
 
         if (localPath) {
             if (window.electronAPI) {
@@ -4873,7 +4936,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Offline Helper Logic ────────────────────────────────────────────────
     async function initiatePWADownload(track) {
         if (track.isLocal) return;
-        const url = `${serverBaseUrl}${track.url}`;
+        const url = getTrackUrlForQuality(track, 'download');
 
         pendingDownloads.set(track.url, 0.01); // show start
         refreshCurrentView();
@@ -4934,7 +4997,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return initiatePWADownload(track);
         }
 
-        const url = `${serverBaseUrl}${track.url}`;
+        const url = getTrackUrlForQuality(track, 'download');
 
         pendingDownloads.set(track.url, 0);
         refreshCurrentView(); // Show loading state
