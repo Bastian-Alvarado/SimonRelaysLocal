@@ -1,7 +1,8 @@
 const DEFAULT_SERVER_URL = 'https://localhost:3000';
 const CURRENT_SERVER_URL = localStorage.getItem('serverUrl');
-if (CURRENT_SERVER_URL === 'http://localhost:3000') {
-    localStorage.removeItem('serverUrl'); // Clear old HTTP default to use HTTPS default
+// Keep HTTP if it's explicitly set to localhost for development
+if (CURRENT_SERVER_URL === 'http://localhost:3000' && window.location.hostname !== 'localhost') {
+    localStorage.removeItem('serverUrl'); 
 }
 
 const isServedFromServer = (window.location.protocol.startsWith('http')) &&
