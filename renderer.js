@@ -4067,7 +4067,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const results = await getAllDownloadedFromIDB();
             // Results are objects like { trackUrl, blob, metadata, savedAt }
             // We need to convert them to the standard track format used by renderTrackList
+            let totalBytes = 0;
             downloadedTracks = results.map(item => {
+                // Sum up blob sizes for storage calculation
+                if (item.blob && item.blob.size) totalBytes += item.blob.size;
+                if (item.coverBlob && item.coverBlob.size) totalBytes += item.coverBlob.size;
+
                 const track = {
                     url: item.trackUrl,
                     metadata: item.metadata,
@@ -4092,6 +4097,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return track;
             }).sort((a, b) => b.savedAt - a.savedAt); // Newest first
             
+            // Update storage info display
+            const storageText = document.getElementById('downloads-storage-text');
+            if (storageText) {
+                const count = downloadedTracks.length;
+                storageText.textContent = `${count} track${count !== 1 ? 's' : ''} · ${formatBytes(totalBytes)}`;
+            }
+
             const downloadsView = document.getElementById('downloads-view');
             if (downloadsView && !downloadsView.classList.contains('hidden')) {
                 renderDownloadsView();
@@ -4099,6 +4111,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             console.error('[Downloads] Failed to fetch downloaded tracks', error);
         }
+    }
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return (bytes / Math.pow(1024, i)).toFixed(i >= 2 ? 1 : 0) + ' ' + units[i];
     }
 
     function renderDownloadsView() {
