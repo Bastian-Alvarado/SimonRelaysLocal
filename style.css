@@ -271,7 +271,6 @@ body {
 
 .immersive-artist:hover {
     color: white;
-    text-decoration: underline;
 }
 
 .immersive-right {
@@ -714,11 +713,11 @@ body {
     font-size: 13px;
     color: var(--text-secondary);
     transition: color 0.2s;
+    cursor: pointer;
 }
 
 .album-card-artist:hover {
     color: var(--text-primary);
-    text-decoration: underline;
 }
 
 /* Sub Header for Views */
@@ -1103,13 +1102,19 @@ body {
     text-overflow: ellipsis;
 }
 
-.track-item-artist .artist-link {
-    transition: color 0.2s;
+.artist-link, 
+.immersive-artist-link, 
+.bottom-artist-link {
+    transition: color 0.2s, opacity 0.2s;
+    cursor: pointer;
 }
 
-.track-item-artist .artist-link:hover {
-    color: var(--text-primary);
-    text-decoration: underline;
+.artist-link:hover, 
+.immersive-artist-link:hover, 
+.bottom-artist-link:hover {
+    color: var(--text-primary) !important;
+    text-decoration: underline !important;
+    opacity: 1 !important;
 }
 
 /* GLOBAL PLAYER BAR (Spotify Style) */
@@ -1192,9 +1197,7 @@ body {
 }
 
 .bottom-artist:hover {
-    text-decoration: underline;
     color: var(--text-primary);
-    cursor: pointer;
 }
 
 /* Center Player Controls */

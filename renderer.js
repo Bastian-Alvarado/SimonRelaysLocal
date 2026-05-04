@@ -17,6 +17,20 @@ localStorage.setItem('deviceId', deviceId);
 
 let albumCoverCache = new Map();
 
+/**
+ * Splits a raw artist string into individual artist names.
+ * Handles common delimiters: ; , & feat. ft. Feat. Ft. featuring x (standalone)
+ * Returns an array of trimmed, non-empty artist names.
+ */
+function splitArtists(raw) {
+    if (!raw) return ['Unknown Artist'];
+    // Split on: semicolons, feat./ft./featuring (with optional dot), ampersand, or comma
+    // The " x " pattern requires spaces to avoid splitting "Dax" into "Da" + ""
+    const parts = raw.split(/\s*;\s*|\s*,\s*|\s+feat\.?\s+|\s+ft\.?\s+|\s+featuring\s+|\s+&\s+|\s+x\s+/i);
+    const cleaned = parts.map(s => s.trim()).filter(s => s.length > 0);
+    return cleaned.length > 0 ? cleaned : ['Unknown Artist'];
+}
+
 function getSharedCoverUrl(relativePath, artist, album) {
     if (!relativePath) return null;
     const cleanArtist = artist || 'Unknown Artist';
@@ -1030,8 +1044,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         hideContextMenu();
         if (currentEditingTrack) {
             const artistName = (currentEditingTrack.metadata && currentEditingTrack.metadata.artist) ? currentEditingTrack.metadata.artist : 'Unknown Artist';
-            const cleanArtist = artistName.includes(';') ? artistName.split(';')[0].trim() : artistName;
-            openArtistView(cleanArtist);
+            const primaryArtist = splitArtists(artistName)[0];
+            openArtistView(primaryArtist);
         }
     });
 
@@ -2670,7 +2684,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const seenArtists = new Set();
         Object.values(albumsData).forEach(album => {
             if (album.artist && album.artist !== 'Unknown Artist') {
-                seenArtists.add(album.artist);
+                splitArtists(album.artist).forEach(a => seenArtists.add(a));
             }
         });
         const matchingArtists = Array.from(seenArtists).filter(a => a.toLowerCase().includes(query));
@@ -2978,7 +2992,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ${CARD_PLAY_BTN_HTML}
             </div>
             <div class="album-card-title">${albumInfo.name}</div>
-            <div class="album-card-artist artist-link">${albumInfo.artist}</div>
+            <div class="album-card-artist">${splitArtists(albumInfo.artist).map(a => `<span class="artist-link" data-artist="${a}">${a}</span>`).join('<span style="opacity:0.5">, </span>')}</div>
         `;
 
         card.querySelector('.card-play-btn').addEventListener('click', (e) => {
@@ -2991,9 +3005,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         card.addEventListener('click', (e) => {
-            if (e.target.classList.contains('artist-link') || e.target.classList.contains('album-card-artist')) {
+            const artistLink = e.target.closest('.artist-link');
+            if (artistLink) {
                 e.stopPropagation();
-                openArtistView(albumInfo.artist);
+                const targetArtist = artistLink.dataset.artist || splitArtists(albumInfo.artist)[0];
+                openArtistView(targetArtist);
                 return;
             }
             openAlbumView(albumInfo);
@@ -3231,7 +3247,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="album-hero-title" title="${albumInfo.name}">${albumInfo.name}</div>
                 <div class="album-hero-meta" style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
                     <div class="artist-avatar album-hero-artist-avatar" style="display: inline-block; vertical-align: middle;"></div>
-                    <strong class="artist-link" style="cursor: pointer;">${albumInfo.artist}</strong> 
+                    <div class="album-hero-artists" style="display: inline-block;">
+                        ${splitArtists(albumInfo.artist).map(a => `<strong class="artist-link" data-artist="${a}" style="cursor: pointer;">${a}</strong>`).join('<span style="opacity:0.5">, </span>')}
+                    </div>
                     <span style="opacity: 0.7;">• ${yearStr} • ${songCountStr}${durationStr}</span>
                     ${genresHtml}
                 </div>
@@ -3287,9 +3305,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             downloadAlbumBtn.addEventListener('click', () => downloadAlbum(albumInfo));
         }
 
-        const heroArtistLink = albumHeroDiv.querySelector('.artist-link');
-        if (heroArtistLink) {
-            heroArtistLink.addEventListener('click', () => openArtistView(albumInfo.artist));
+        const heroArtistContainer = albumHeroDiv.querySelector('.album-hero-artists');
+        if (heroArtistContainer) {
+            heroArtistContainer.addEventListener('click', (e) => {
+                const link = e.target.closest('.artist-link');
+                if (link) {
+                    openArtistView(link.dataset.artist || splitArtists(albumInfo.artist)[0]);
+                }
+            });
         }
 
         renderTrackList(albumInfo.tracks, trackListElement, false, null, true, true);
@@ -3422,7 +3445,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ${coverHtml}
                 <div class="track-item-info">
                     <div class="track-item-title">${title}</div>
-                    <div class="track-item-artist"><span class="artist-link" style="cursor: pointer;">${artist}</span></div>
+                    <div class="track-item-artist">${splitArtists(artist).map(a => `<span class="artist-link" data-artist="${a}" style="cursor: pointer;">${a}</span>`).join('<span style="opacity:0.5">, </span>')}</div>
                 </div>
                 <div class="track-item-actions">
                     ${isUnsupported ? `
@@ -3534,7 +3557,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             trackItem.addEventListener('click', (e) => {
                 if (e.target.closest('.artist-link')) {
                     e.stopPropagation();
-                    openArtistView(artist);
+                    const clickedArtist = e.target.closest('.artist-link').dataset.artist || splitArtists(artist)[0];
+                    openArtistView(clickedArtist);
                     return;
                 }
                 if (e.target.closest('.add-to-playlist-btn') || e.target.closest('.remove-from-playlist-btn') || e.target.closest('.drag-handle')) return;
@@ -3589,8 +3613,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Find all albums by this artist from the pre-processed albumsData
         const artistAlbums = [];
+        const lowerArtistName = artistName.toLowerCase();
         for (const [albumName, albumInfo] of Object.entries(albumsData)) {
-            if (albumInfo.artist === artistName) {
+            // Match if the album's artist field contains this artist name
+            const albumArtists = splitArtists(albumInfo.artist).map(a => a.toLowerCase());
+            if (albumArtists.includes(lowerArtistName) || albumInfo.artist.toLowerCase() === lowerArtistName) {
                 artistAlbums.push(albumInfo);
             }
         }
@@ -3624,31 +3651,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Render albums
         artistAlbumGrid.innerHTML = '';
         artistAlbums.forEach(albumInfo => {
-            const card = document.createElement('div');
-            card.className = 'album-card';
-            let coverHtml = `<div class="album-card-art"></div>`;
-            if (albumInfo.coverTrackPath) {
-                const pictureUrl = getSharedCoverUrl(albumInfo.coverTrackPath, albumInfo.artist, albumInfo.name);
-                coverHtml = `<img src="${pictureUrl}" class="album-card-art" alt="Album Cover">`;
-            }
-            card.innerHTML = `
-                <div class="card-art-wrapper">
-                    ${coverHtml}
-                    ${CARD_PLAY_BTN_HTML}
-                </div>
-                <div class="album-card-title">${albumInfo.name}</div>
-                <div class="album-card-artist">${albumInfo.artist}</div>
-            `;
-            card.querySelector('.card-play-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                const firstIdx = albumInfo.tracks.findIndex(t => !isTrackUnsupported(t));
-                if (firstIdx === -1) return;
-                currentPlaylistContext = albumInfo.tracks;
-                if (isShuffleActive) unplayedIndices = albumInfo.tracks.map((_, i) => i);
-                commitTrackChange(firstIdx);
-            });
-            card.addEventListener('click', () => openAlbumView(albumInfo));
-            artistAlbumGrid.appendChild(card);
+            artistAlbumGrid.appendChild(createAlbumCard(albumInfo));
         });
 
         // Write to view cache (fire-and-forget)
@@ -4848,8 +4851,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const unique = new Set();
             allTracks.forEach(t => {
                 const rawName = (t.metadata && t.metadata.artist) ? t.metadata.artist : 'Unknown Artist';
-                const aName = rawName.includes(';') ? rawName.split(';')[0].trim() : rawName;
-                if (aName !== 'Unknown Artist') unique.add(aName);
+                splitArtists(rawName).forEach(aName => {
+                    if (aName !== 'Unknown Artist') unique.add(aName);
+                });
             });
             recentNames = Array.from(unique);
         }
@@ -4951,15 +4955,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateLikeButtonState();
 
         bottomTitle.textContent = title;
-        bottomArtist.textContent = artist;
+        bottomArtist.innerHTML = splitArtists(artist).map(a => `<span class="bottom-artist-link" data-artist="${a}" style="cursor: pointer;">${a}</span>`).join('<span style="opacity:0.5">, </span>');
 
         // Save to Recent Artists History
         try {
             if (artist && artist !== 'Unknown Artist') {
-                const cleanArtist = artist.includes(';') ? artist.split(';')[0].trim() : artist;
+                const artistNames = splitArtists(artist);
                 let recent = JSON.parse(localStorage.getItem('recentArtists') || '[]');
-                recent = recent.filter(a => a !== cleanArtist);
-                recent.unshift(cleanArtist);
+                artistNames.forEach(name => {
+                    recent = recent.filter(a => a !== name);
+                    recent.unshift(name);
+                });
                 localStorage.setItem('recentArtists', JSON.stringify(recent.slice(0, 50)));
                 renderRecentArtists();
             }
@@ -5014,11 +5020,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
         }
         if (immersiveArtist) {
-            immersiveArtist.textContent = artist;
-            immersiveArtist.onclick = () => {
-                if (artist && artist !== 'Unknown Artist') {
+            const artists = splitArtists(artist);
+            immersiveArtist.innerHTML = artists.map(a => `<span class="immersive-artist-link" data-artist="${a}" style="cursor:pointer;">${a}</span>`).join('<span style="opacity:0.5">, </span>');
+            immersiveArtist.onclick = (e) => {
+                const link = e.target.closest('.immersive-artist-link');
+                const targetArtist = link ? link.dataset.artist : artists[0];
+                if (targetArtist && targetArtist !== 'Unknown Artist') {
                     hideImmersiveOverlay();
-                    openArtistView(artist);
+                    openArtistView(targetArtist);
                 }
             };
         }
@@ -5368,10 +5377,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncOfflineState();
 
     // Bottom Bar Click Navigation
-    bottomArtist.addEventListener('click', () => {
+    bottomArtist.addEventListener('click', (e) => {
         if (!globalPlayingTrack) return;
-        const artistName = (globalPlayingTrack.metadata && globalPlayingTrack.metadata.artist) ? globalPlayingTrack.metadata.artist : "Unknown Artist";
-        openArtistView(artistName);
+        const link = e.target.closest('.bottom-artist-link');
+        if (link) {
+            openArtistView(link.dataset.artist);
+        } else {
+            const artistName = (globalPlayingTrack.metadata && globalPlayingTrack.metadata.artist) ? globalPlayingTrack.metadata.artist : "Unknown Artist";
+            openArtistView(splitArtists(artistName)[0]);
+        }
     });
 
     bottomTitle.addEventListener('click', () => {
