@@ -248,6 +248,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const metadataArtistInput = document.getElementById('metadata-artist-input');
     const metadataAlbumInput = document.getElementById('metadata-album-input');
     const metadataYearInput = document.getElementById('metadata-year-input');
+    const metadataGenreInput = document.getElementById('metadata-genre-input');
+    const metadataGenreDropdown = document.getElementById('metadata-genre-dropdown');
     const metadataArtPreview = document.getElementById('metadata-art-preview');
     const metadataArtInput = document.getElementById('metadata-art-input');
     const metadataArtDropzone = document.getElementById('metadata-art-dropzone');
@@ -1057,6 +1059,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Hide song-specific fields
         metadataTitleInput.closest('.input-group').style.display = 'none';
         metadataYearInput.closest('.input-group').style.display = 'none';
+        metadataGenreInput.closest('.input-group').style.display = 'none';
 
         // Show cover editor for album level
         metadataArtDropzone.closest('.metadata-editor-left').style.display = 'flex';
@@ -1087,6 +1090,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Ensure all fields are visible
         metadataTitleInput.closest('.input-group').style.display = 'flex';
         metadataYearInput.closest('.input-group').style.display = 'flex';
+        metadataGenreInput.closest('.input-group').style.display = 'flex';
 
         // Hide cover editor for individual songs
         metadataArtDropzone.closest('.metadata-editor-left').style.display = 'none';
@@ -1096,6 +1100,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         metadataArtistInput.value = (track.metadata && track.metadata.artist) ? track.metadata.artist : '';
         metadataAlbumInput.value = (track.metadata && track.metadata.album) ? track.metadata.album : '';
         metadataYearInput.value = (track.metadata && track.metadata.year) ? track.metadata.year : '';
+        const currentGenre = (track.metadata && track.metadata.genre) ? (Array.isArray(track.metadata.genre) ? track.metadata.genre[0] : track.metadata.genre) : '';
+        metadataGenreInput.value = currentGenre;
 
         if (track.hasBackup) {
             metadataRestoreBtn.classList.remove('hidden');
@@ -1108,6 +1114,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     metadataCancelBtn.addEventListener('click', () => {
         editMetadataModal.classList.add('hidden');
+        if (metadataGenreDropdown) metadataGenreDropdown.style.display = 'none';
     });
 
     metadataArtDropzone.addEventListener('click', () => {
@@ -1176,7 +1183,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 title: metadataTitleInput.value.trim(),
                 artist: metadataArtistInput.value.trim(),
                 album: metadataAlbumInput.value.trim(),
-                year: metadataYearInput.value
+                year: metadataYearInput.value,
+                genre: metadataGenreInput.value.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
             },
             coverArt: null // coverArt editing disabled at song level
         };
@@ -1257,12 +1265,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <div class="settings-row-sub">Used when playing over the network.</div>
                         </div>
                         <div class="settings-input-group">
-                            <select id="setting-stream-quality" class="settings-text-input" style="width: 100%; cursor: pointer; background-color: #1a1a20; color: white;">
-                                <option value="original">Original</option>
-                                <option value="320">320kbps</option>
-                                <option value="192">192kbps</option>
-                                <option value="128">128kbps</option>
-                            </select>
+                            <div style="position: relative;">
+                                <input type="text" id="setting-stream-quality" class="settings-text-input" readonly style="width: 100%; cursor: pointer; background-color: #1a1a20; color: white;">
+                                <div id="setting-stream-quality-dropdown" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a20; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; margin-top: 4px; max-height: 200px; overflow-y: auto; z-index: 1000; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5);"></div>
+                            </div>
                         </div>
                     </div>
                     <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 12px;">
@@ -1271,12 +1277,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <div class="settings-row-sub">Used when saving for offline play.</div>
                         </div>
                         <div class="settings-input-group">
-                            <select id="setting-download-quality" class="settings-text-input" style="width: 100%; cursor: pointer; background-color: #1a1a20; color: white;">
-                                <option value="original">Original</option>
-                                <option value="320">320kbps</option>
-                                <option value="192">192kbps</option>
-                                <option value="128">128kbps</option>
-                            </select>
+                            <div style="position: relative;">
+                                <input type="text" id="setting-download-quality" class="settings-text-input" readonly style="width: 100%; cursor: pointer; background-color: #1a1a20; color: white;">
+                                <div id="setting-download-quality-dropdown" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a20; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; margin-top: 4px; max-height: 200px; overflow-y: auto; z-index: 1000; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5);"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1359,20 +1363,57 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
 
         // Audio Quality Handlers
-        const streamQualitySelect = document.getElementById('setting-stream-quality');
-        const downloadQualitySelect = document.getElementById('setting-download-quality');
-        if (streamQualitySelect) {
-            streamQualitySelect.value = localStorage.getItem('streamQuality') || 'original';
-            streamQualitySelect.addEventListener('change', (e) => {
-                localStorage.setItem('streamQuality', e.target.value);
+        const qualityOptions = [
+            { value: 'original', label: 'Original' },
+            { value: '320', label: '320kbps' },
+            { value: '192', label: '192kbps' },
+            { value: '128', label: '128kbps' }
+        ];
+
+        function setupCustomSelect(inputId, dropdownId, storageKey) {
+            const input = document.getElementById(inputId);
+            const dropdown = document.getElementById(dropdownId);
+            if (!input || !dropdown) return;
+
+            const updateInputVal = (val) => {
+                const opt = qualityOptions.find(o => o.value === val);
+                input.value = opt ? opt.label : 'Original';
+                input.dataset.value = val;
+            };
+
+            const currentVal = localStorage.getItem(storageKey) || 'original';
+            updateInputVal(currentVal);
+
+            qualityOptions.forEach(opt => {
+                const div = document.createElement('div');
+                div.textContent = opt.label;
+                div.style.padding = '10px 16px';
+                div.style.cursor = 'pointer';
+                div.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+                div.style.fontSize = '14px';
+                div.addEventListener('mouseenter', () => div.style.background = 'rgba(255,255,255,0.05)');
+                div.addEventListener('mouseleave', () => div.style.background = 'transparent');
+                div.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    updateInputVal(opt.value);
+                    localStorage.setItem(storageKey, opt.value);
+                    dropdown.style.display = 'none';
+                });
+                dropdown.appendChild(div);
+            });
+
+            input.addEventListener('mousedown', (e) => {
+                e.preventDefault(); // Prevent input from gaining actual text focus in a way that interferes
+                dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+                input.focus(); // Ensure it gets blur events
+            });
+            input.addEventListener('blur', () => {
+                dropdown.style.display = 'none';
             });
         }
-        if (downloadQualitySelect) {
-            downloadQualitySelect.value = localStorage.getItem('downloadQuality') || 'original';
-            downloadQualitySelect.addEventListener('change', (e) => {
-                localStorage.setItem('downloadQuality', e.target.value);
-            });
-        }
+
+        setupCustomSelect('setting-stream-quality', 'setting-stream-quality-dropdown', 'streamQuality');
+        setupCustomSelect('setting-download-quality', 'setting-download-quality-dropdown', 'downloadQuality');
 
         // Network section handlers
         const zoomInput = document.getElementById('zoom-range-input');
@@ -2571,6 +2612,59 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize history visibility
     renderSearchHistory();
 
+    // Custom Genre Dropdown Logic
+    const DEFAULT_GENRES = [
+        "Acoustic", "Alternative", "Ambient", "Blues", "Classical", "Country", "Dance", 
+        "Electronic", "Folk", "Hip-Hop", "Indie", "Jazz", "Latin", "Lo-Fi", "Metal", 
+        "Pop", "R&B", "Rock", "Soul", "Soundtrack", "Trap"
+    ];
+
+    function renderGenreDropdown(filter = '') {
+        if (!metadataGenreDropdown) return;
+        metadataGenreDropdown.innerHTML = '';
+        const lowerFilter = filter.toLowerCase();
+        
+        let options = [...DEFAULT_GENRES];
+        const currentVal = metadataGenreInput.value.trim();
+        if (currentVal && !options.some(o => o.toLowerCase() === currentVal.toLowerCase())) {
+            options.unshift(currentVal);
+        }
+
+        options = options.filter(g => g.toLowerCase().includes(lowerFilter));
+
+        if (options.length === 0) {
+            metadataGenreDropdown.style.display = 'none';
+            return;
+        }
+
+        options.forEach(g => {
+            const div = document.createElement('div');
+            div.textContent = g;
+            div.style.padding = '10px 16px';
+            div.style.cursor = 'pointer';
+            div.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+            div.style.fontSize = '14px';
+            div.addEventListener('mouseenter', () => div.style.background = 'rgba(255,255,255,0.05)');
+            div.addEventListener('mouseleave', () => div.style.background = 'transparent');
+            div.addEventListener('mousedown', (e) => {
+                e.preventDefault(); // Prevent blur
+                metadataGenreInput.value = g;
+                metadataGenreDropdown.style.display = 'none';
+            });
+            metadataGenreDropdown.appendChild(div);
+        });
+
+        metadataGenreDropdown.style.display = 'block';
+    }
+
+    if (metadataGenreInput && metadataGenreDropdown) {
+        metadataGenreInput.addEventListener('focus', () => renderGenreDropdown(''));
+        metadataGenreInput.addEventListener('input', () => renderGenreDropdown(metadataGenreInput.value));
+        metadataGenreInput.addEventListener('blur', () => {
+            metadataGenreDropdown.style.display = 'none';
+        });
+    }
+
     async function renderSearchResults(query) {
         // Collect unique artists that actually have albums/tracks
         const seenArtists = new Set();
@@ -3098,17 +3192,34 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         let earliestYear = 9999;
         let totalDuration = 0;
+        let albumGenres = new Set();
 
         albumInfo.tracks.forEach(t => {
             if (t.metadata) {
                 if (t.metadata.year && t.metadata.year < earliestYear) earliestYear = t.metadata.year;
                 if (t.metadata.duration) totalDuration += t.metadata.duration;
+                if (t.metadata.genre) {
+                    if (Array.isArray(t.metadata.genre)) {
+                        t.metadata.genre.forEach(g => albumGenres.add(g));
+                    } else if (typeof t.metadata.genre === 'string') {
+                        t.metadata.genre.split(',').map(s => s.trim()).filter(Boolean).forEach(g => albumGenres.add(g));
+                    }
+                }
             }
         });
 
         const yearStr = earliestYear === 9999 ? 'Unknown Year' : earliestYear;
         const durationStr = totalDuration > 0 ? `, ${formatHeroDuration(totalDuration)}` : '';
         const songCountStr = `${albumInfo.tracks.length} song${albumInfo.tracks.length !== 1 ? 's' : ''}`;
+        
+        let genresHtml = '';
+        if (albumGenres.size > 0) {
+            genresHtml = Array.from(albumGenres).slice(0, 3).map(g => 
+                `<span style="background: rgba(255,255,255,0.1); color: var(--text-secondary); padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px; border: 1px solid rgba(255,255,255,0.05); text-transform: uppercase; letter-spacing: 0.5px;">${g}</span>`
+            ).join('');
+        } else {
+            genresHtml = `<span style="background: rgba(255,0,0,0.2); color: #ff8888; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px; border: 1px solid rgba(255,0,0,0.2); text-transform: uppercase; letter-spacing: 0.5px;">NO GENRE TAGS</span>`;
+        }
 
         const isAlbumOffline = albumInfo.tracks.every(t => downloadedTracksMap.has(t.url));
         const isAlbumDownloading = albumInfo.tracks.some(t => pendingDownloads.has(t.url));
@@ -3118,11 +3229,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="album-hero-info">
                 <div class="album-hero-label">Album</div>
                 <div class="album-hero-title" title="${albumInfo.name}">${albumInfo.name}</div>
-                <div class="album-hero-meta">
+                <div class="album-hero-meta" style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
                     <div class="artist-avatar album-hero-artist-avatar" style="display: inline-block; vertical-align: middle;"></div>
-                    <strong class="artist-link" style="cursor: pointer;">${albumInfo.artist}</strong> • ${yearStr} • ${songCountStr}${durationStr}
+                    <strong class="artist-link" style="cursor: pointer;">${albumInfo.artist}</strong> 
+                    <span style="opacity: 0.7;">• ${yearStr} • ${songCountStr}${durationStr}</span>
+                    ${genresHtml}
                 </div>
-                <div class="album-hero-actions">
+            </div>
         `;
 
         // Fetch and apply artist image for the hero avatar

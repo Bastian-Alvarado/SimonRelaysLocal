@@ -3943,4 +3943,23 @@ body {
         width: 160px;
         height: 160px;
     }
+
+    .metadata-editor-layout {
+        flex-direction: column;
+        gap: 24px;
+        align-items: center;
+    }
+
+    .metadata-editor-right {
+        width: 100%;
+    }
+
+    /* Make hover-only action buttons always visible on mobile */
+    .track-item-more-btn,
+    .add-to-playlist-btn,
+    .remove-from-playlist-btn,
+    .track-offline-btn,
+    .drag-handle {
+        opacity: 0.8 !important;
+    }
 }
