@@ -2970,6 +2970,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             albumsData[albumName].tracks.push(track);
         });
 
+        // Sort tracks within each album by Disc Number, then Track Number, then Alphabetically
+        Object.values(albumsData).forEach(album => {
+            album.tracks.sort((a, b) => {
+                const aDisc = (a.metadata && a.metadata.disk && a.metadata.disk.no) ? a.metadata.disk.no : 1;
+                const bDisc = (b.metadata && b.metadata.disk && b.metadata.disk.no) ? b.metadata.disk.no : 1;
+                if (aDisc !== bDisc) return aDisc - bDisc;
+
+                const aNo = (a.metadata && a.metadata.track && a.metadata.track.no) ? a.metadata.track.no : 9999;
+                const bNo = (b.metadata && b.metadata.track && b.metadata.track.no) ? b.metadata.track.no : 9999;
+                if (aNo !== bNo) return aNo - bNo;
+
+                const aTitle = (a.metadata && a.metadata.title) ? a.metadata.title : a.filename;
+                const bTitle = (b.metadata && b.metadata.title) ? b.metadata.title : b.filename;
+                return aTitle.localeCompare(bTitle);
+            });
+        });
+
         renderHomeGrid();
     }
 
