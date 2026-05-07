@@ -9,7 +9,7 @@ const isServedFromServer = (window.location.protocol.startsWith('http')) &&
     (window.location.hostname !== 'localhost' && !window.location.hostname.startsWith('127.'));
 // Also treat localhost as self-hosted when the page itself is served from the server (not file:// or Electron)
 const isSelfHosted = isServedFromServer ||
-    (window.location.protocol.startsWith('http') && window.location.port && !window.electronAPI);
+    (window.location.protocol.startsWith('http') && window.location.port);
 
 let serverBaseUrl = (localStorage.getItem('serverUrl') || (isSelfHosted ? '' : DEFAULT_SERVER_URL)).replace(/\/+$/, '');
 
@@ -92,7 +92,101 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Global Player Bar Nodes
     const trackListElement = document.getElementById('track-list');
+    
+    // ── Howler.js Audio Engine Wrapper (Hybrid Proxy) ───────────────────────────
+    Howler.autoUnlock = true;
+    let currentHowl = null;
+    let nextHowl = null;
+    let nextTrackData = null;
+    let crossfadeTimeout = null;
+    let _lastSeekTime = 0;
+    let CROSSFADE_DURATION = parseInt(localStorage.getItem('crossfadeDuration')) || 5000;
+
     const audioPlayer = document.getElementById('audio-player');
+    
+    // Override methods/properties to redirect to Howler
+    audioPlayer._originalPlay = audioPlayer.play;
+    audioPlayer._originalPause = audioPlayer.pause;
+    
+    audioPlayer.play = function() {
+        if (currentHowl) {
+            currentHowl.play();
+            return Promise.resolve();
+        }
+        return Promise.reject('No track loaded');
+    };
+    
+    audioPlayer.pause = function() {
+        if (currentHowl) currentHowl.pause();
+    };
+
+    Object.defineProperties(audioPlayer, {
+        paused: {
+            get: () => {
+                if (!currentHowl) return true;
+                return !currentHowl.playing();
+            }
+        },
+        duration: {
+            get: () => {
+                let howlDur = currentHowl ? currentHowl.duration() : 0;
+                if (howlDur && isFinite(howlDur) && howlDur > 0) return howlDur;
+                const metaDur = (globalPlayingTrack && globalPlayingTrack.metadata && globalPlayingTrack.metadata.duration) ? globalPlayingTrack.metadata.duration : 0;
+                return isFinite(metaDur) ? metaDur : 0;
+            }
+        },
+        currentTime: {
+            get: () => {
+                if (!currentHowl) return 0;
+                const pos = currentHowl.seek();
+                return (typeof pos === 'number' && isFinite(pos)) ? pos : 0;
+            },
+            set: (val) => {
+                if (currentHowl && isFinite(val)) {
+                    _lastSeekTime = Date.now();
+                    currentHowl.seek(val);
+                }
+            }
+        },
+        volume: {
+            get: () => Howler.volume(),
+            set: (val) => Howler.volume(val)
+        }
+    });
+
+    // Helper for triggering standard DOM events
+    audioPlayer._trigger = function(eventName) {
+        this.dispatchEvent(new Event(eventName));
+    };
+
+    function fadeHowl(howl, targetVolume, duration, onComplete) {
+        if (!howl) return;
+        howl.fade(howl.volume(), targetVolume, duration);
+        if (onComplete) {
+            setTimeout(onComplete, duration);
+        }
+    }
+
+    // Emulate timeupdate event (Howler doesn't have one)
+    setInterval(() => {
+        if (currentHowl && currentHowl.playing()) {
+            // Only trigger if we aren't dragging and aren't in a seek cooldown
+            if (!isDraggingScrubber && (Date.now() - _lastSeekTime > 800)) {
+                audioPlayer._trigger('timeupdate');
+            }
+
+            // Crossfade Check: Only if we are at least 10s into the song and near the end
+            const duration = audioPlayer.duration;
+            const seek = audioPlayer.currentTime;
+            const remain = duration - seek;
+            
+            if (duration > 10 && seek > 10 && remain > 0 && remain <= (CROSSFADE_DURATION / 1000) && !crossfadeTimeout) {
+                console.log('[Audio] Crossfade threshold reached. Pre-starting next track...');
+                crossfadeTimeout = true; // prevent double trigger
+                playNextTrack(true);
+            }
+        }
+    }, 250);
     const bottomTitle = document.getElementById('bottom-title');
     const bottomArtist = document.getElementById('bottom-artist');
     const bottomArtWrapper = document.getElementById('bottom-art');
@@ -174,19 +268,15 @@ document.addEventListener('DOMContentLoaded', async () => {
      * The main process (main.js) loads these and injects them here via contextBridge.
      */
     let firebaseConfig = null;
-    if (window.electronAPI && window.electronAPI.getFirebaseConfig) {
-        firebaseConfig = await window.electronAPI.getFirebaseConfig();
-    } else {
-        // PWA / Browser Fallback: Fetch config from local backend
-        try {
-            const res = await fetch(`${serverBaseUrl}/api/firebase-config`);
-            if (res.ok) {
-                firebaseConfig = await res.json();
-                console.log('[Cloud] Firebase config fetched from server API.');
-            }
-        } catch (e) {
-            console.warn('[Cloud] Failed to fetch Firebase config from server API.', e);
+    // Fetch config from local backend (always use this in browser/PWA)
+    try {
+        const res = await fetch(`${serverBaseUrl}/api/firebase-config`);
+        if (res.ok) {
+            firebaseConfig = await res.json();
+            console.log('[Cloud] Firebase config fetched from server API.');
         }
+    } catch (e) {
+        console.warn('[Cloud] Failed to fetch Firebase config from server API.', e);
     }
 
     if (firebaseConfig && firebaseConfig.apiKey) {
@@ -338,27 +428,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (mobileMenuBtn) mobileMenuBtn.classList.remove('active');
     }
 
-    // Window Controls
+    // Window Controls (Disabled in Browser)
     const minBtn = document.getElementById('min-btn');
     const maxBtn = document.getElementById('max-btn');
     const closeBtn = document.getElementById('close-btn');
-    const maxIcon = document.getElementById('max-icon');
-
-    if (window.electronAPI) {
-        minBtn.addEventListener('click', () => window.electronAPI.minimizeWindow());
-        maxBtn.addEventListener('click', () => window.electronAPI.maximizeWindow());
-        closeBtn.addEventListener('click', () => window.electronAPI.closeWindow());
-
-        window.electronAPI.onWindowStateChanged((isMaximized) => {
-            if (isMaximized) {
-                // Restore icon (two overlapping squares)
-                maxIcon.innerHTML = '<rect x="8" y="4" width="12" height="12" rx="2" ry="2"></rect><path d="M4 8v12h12"></path>';
-            } else {
-                // Maximize icon (single square)
-                maxIcon.innerHTML = '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>';
-            }
-        });
-    }
+    if (minBtn) minBtn.style.display = 'none';
+    if (maxBtn) maxBtn.style.display = 'none';
+    if (closeBtn) closeBtn.style.display = 'none';
 
     // ── Dynamic Color Logic ──────────────────────────────────────────────────
     async function updatePlayerBarDynamicColor(imgUrl) {
@@ -475,7 +551,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentPlaylistContext = [];
     let currentTrackIndex = -1;
     let isShuffleActive = false;
-    let unplayedIndices = [];
+    let shuffledIndices = [];
+    let currentShufflePointer = -1;
+
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    function generateShuffleQueue(startIndex = -1) {
+        const indices = currentPlaylistContext.map((_, i) => i)
+            .filter(i => !isTrackUnsupported(currentPlaylistContext[i]));
+        
+        const shuffled = shuffleArray(indices);
+        
+        if (startIndex !== -1) {
+            const pos = shuffled.indexOf(startIndex);
+            if (pos !== -1) {
+                shuffled.splice(pos, 1);
+                shuffled.unshift(startIndex);
+            }
+        }
+        
+        shuffledIndices = shuffled;
+        currentShufflePointer = 0;
+    }
     let repeatMode = 0;
     let globalPlayingTrack = null;
     let allPlaylists = [];
@@ -683,17 +786,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Up Next Badge ─────────────────────────────────────────────────────────
     function updateImmersiveUpNext() {
-        if (!immersiveUpNext || !immersiveView || !immersiveView.classList.contains('active')) return;
+        if (!immersiveUpNext || !immersiveView) return;
 
-        // Priority: user queue → next in context → pending recommendation
-        let upNext = null;
-        if (userQueue.length > 0) {
-            upNext = userQueue[0];
-        } else if (!isShuffleActive && currentPlaylistContext.length > 0) {
-            const nextIdx = getNextPlayableIndex(currentTrackIndex + 1, 1, true);
-            if (nextIdx !== -1) upNext = currentPlaylistContext[nextIdx];
-        }
-        if (!upNext && pendingRecommendedTrack) upNext = pendingRecommendedTrack;
+        // Centralized logic: user queue → shuffle queue → next in context → recommendation
+        const upNext = getNextTrack();
 
         if (!upNext) {
             immersiveUpNext.classList.add('hidden');
@@ -764,12 +860,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Render Context Coming Up
         const contextRemaining = [];
-        if (isShuffleActive) {
-            unplayedIndices.forEach(idx => {
+        if (isShuffleActive && shuffledIndices.length > 0) {
+            // Show upcoming tracks in the shuffled queue
+            for (let i = currentShufflePointer + 1; i < shuffledIndices.length; i++) {
+                const idx = shuffledIndices[i];
                 if (currentPlaylistContext[idx] && !isTrackUnsupported(currentPlaylistContext[idx])) {
                     contextRemaining.push(currentPlaylistContext[idx]);
                 }
-            });
+            }
         } else {
             for (let i = currentTrackIndex + 1; i < currentPlaylistContext.length; i++) {
                 if (!isTrackUnsupported(currentPlaylistContext[i])) {
@@ -1268,7 +1366,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!body) return;
 
         const currentCustomUrl = localStorage.getItem('serverUrl') || '';
-        const localPaths = getLocalMusicPaths();
 
         body.innerHTML = `
             <div class="settings-section">
@@ -1317,33 +1414,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
             </div>
 
-            <div class="settings-section">
-                <div class="settings-section-title">Local Music Sources</div>
-                <div class="settings-row">
-                    <div class="settings-row-info">
-                        <div class="settings-row-label">Add Music Folder</div>
-                        <div class="settings-row-sub">Point to any local folder. Its audio files are merged with your library automatically.</div>
-                    </div>
-                    <div class="settings-input-group">
-                        <button id="local-path-add-btn" class="settings-save-btn">Add Folder</button>
-                        <button id="local-rescan-btn" class="settings-reset-btn">Force Rescan Library</button>
-                    </div>
-                    <div id="local-path-status" class="local-path-status"></div>
-                    ${localPaths.length > 0 ? `
-                        <div class="local-sources-list">
-                            ${localPaths.map((p, i) => `
-                                <div class="local-source-item">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.5;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                                    <span class="local-source-path" title="${p}">${p}</span>
-                                    <button class="local-source-remove-btn" data-index="${i}" title="Remove">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                                    </button>
-                                </div>
-                            `).join('')}
-                        </div>
-                    ` : '<div class="local-sources-empty">No local sources added yet.</div>'}
-                </div>
-            </div>
 
             <div class="settings-section">
                 <div class="settings-section-title">Cloud Library</div>
@@ -1357,6 +1427,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <button id="cloud-upload-btn" class="settings-save-btn">Select Files</button>
                     </div>
                     <div id="cloud-upload-status" class="local-path-status"></div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Playback</div>
+                <div class="settings-row">
+                    <div class="settings-row-info">
+                        <div class="settings-row-label">Crossfade Duration</div>
+                        <div class="settings-row-sub">Seamlessly transition between tracks. Current: <span id="setting-crossfade-value" style="color:var(--accent); font-weight:600;">${CROSSFADE_DURATION / 1000}s</span></div>
+                    </div>
+                    <div class="settings-input-group zoom-slider-group">
+                        <span class="zoom-min-label">0s</span>
+                        <input id="setting-crossfade-duration" type="range" min="0" max="12" step="1" value="${CROSSFADE_DURATION / 1000}" class="settings-range-input">
+                        <span class="zoom-max-label">12s</span>
+                    </div>
                 </div>
             </div>
 
@@ -1448,6 +1533,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
+        // Crossfade Handler
+        const crossfadeSlider = document.getElementById('setting-crossfade-duration');
+        const crossfadeValue = document.getElementById('setting-crossfade-value');
+        if (crossfadeSlider && crossfadeValue) {
+            crossfadeSlider.addEventListener('input', (e) => {
+                const secs = parseInt(e.target.value);
+                CROSSFADE_DURATION = secs * 1000;
+                crossfadeValue.textContent = secs + 's';
+                localStorage.setItem('crossfadeDuration', CROSSFADE_DURATION);
+            });
+        }
+
         document.getElementById('server-url-save-btn').addEventListener('click', () => {
             const val = document.getElementById('server-url-input').value.trim().replace(/\/+$/, '');
             if (val && val !== DEFAULT_SERVER_URL) localStorage.setItem('serverUrl', val);
@@ -1458,87 +1555,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const resetBtn = document.getElementById('server-url-reset-btn');
         if (resetBtn) resetBtn.addEventListener('click', () => { localStorage.removeItem('serverUrl'); albumCoverCache.clear(); location.reload(); });
 
-        // Local sources: Add folder (Native Picker)
-        document.getElementById('local-path-add-btn').addEventListener('click', async () => {
-            if (!window.electronAPI) {
-                alert('Folder selection is only available in the desktop app.');
-                return;
-            }
-
-            const pathVal = await window.electronAPI.selectDirectory();
-            if (!pathVal) return;
-
-            const statusEl = document.getElementById('local-path-status');
-            const paths = getLocalMusicPaths();
-
-            if (paths.includes(pathVal)) {
-                statusEl.textContent = 'This folder is already added.';
-                statusEl.className = 'local-path-status error';
-                return;
-            }
-
-            statusEl.textContent = 'Scanning and adding folder...';
-            statusEl.className = 'local-path-status scanning';
-            document.getElementById('local-path-add-btn').disabled = true;
-
-            try {
-                const res = await fetch(`${serverBaseUrl}/api/scan-directory`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: pathVal })
-                });
-
-                if (!res.ok) throw new Error(res.statusText);
-
-                paths.push(pathVal);
-                saveLocalMusicPaths(paths);
-                localStorage.setItem('lastScanTime', Date.now().toString());
-
-                statusEl.textContent = `✓ Folder Added and Scanned successfully.`;
-                statusEl.className = 'local-path-status success';
-
-                await initializeMusicLibrary();
-                renderSettingsPanel();
-            } catch (e) {
-                statusEl.textContent = `Error scanning: ${e.message}`;
-                statusEl.className = 'local-path-status error';
-            } finally {
-                document.getElementById('local-path-add-btn').disabled = false;
-            }
-        });
-
-        // Force Rescan Handler
-        const rescanBtn = document.getElementById('local-rescan-btn');
-        if (rescanBtn) {
-            rescanBtn.addEventListener('click', async () => {
-                const statusEl = document.getElementById('local-path-status');
-                rescanBtn.disabled = true;
-                statusEl.textContent = 'Refreshing all local sources...';
-                statusEl.className = 'local-path-status scanning';
-
-                try {
-                    await rescanLocalSources();
-                    statusEl.textContent = '✓ Library rescan complete.';
-                    statusEl.className = 'local-path-status success';
-                } catch (e) {
-                    statusEl.textContent = 'Error during rescan.';
-                    statusEl.className = 'local-path-status error';
-                } finally {
-                    rescanBtn.disabled = false;
-                }
-            });
-        }
-
-        // Local sources: Remove folder
-        body.querySelectorAll('.local-source-remove-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const idx = parseInt(btn.dataset.index);
-                const paths = getLocalMusicPaths();
-                paths.splice(idx, 1);
-                saveLocalMusicPaths(paths);
-                await initializeMusicLibrary();
-                renderSettingsPanel();
-            });
-        });
+        // Local sources: Add folder
 
         // Cloud Upload handlers
         const uploadBtn = document.getElementById('cloud-upload-btn');
@@ -1603,18 +1620,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     modalInstallBtn.addEventListener('click', async () => {
-        modalInstallBtn.textContent = 'Installing...';
-        modalInstallBtn.disabled = true;
-        modalCancelBtn.style.display = 'none';
-
-        if (window.electronAPI) {
-            await window.electronAPI.installCodecs();
-        } else {
-            console.warn('Install codecs only available in desktop app');
-            // On mobile, we can just close the modal as the browser handles codecs
-            hideDependencyModal();
-        }
-
         hideDependencyModal();
     });
 
@@ -1653,12 +1658,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         isShuffleActive = !isShuffleActive;
         if (isShuffleActive) {
             shuffleBtn.classList.add('toggle-active');
-            if (currentPlaylistContext.length > 0) {
-                unplayedIndices = currentPlaylistContext.map((_, i) => i).filter(i => i !== currentTrackIndex);
-            }
+            generateShuffleQueue(currentTrackIndex);
         } else {
             shuffleBtn.classList.remove('toggle-active');
+            shuffledIndices = [];
+            currentShufflePointer = -1;
         }
+        
+        // Refresh UI and preloader for the new sequence
+        updateImmersiveUpNext();
+        if (queueView && queueView.classList.contains('active')) renderQueueView();
+        preloadNextTrack();
     });
 
     if (bottomOfflineBtn) {
@@ -1698,11 +1708,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             navigator.mediaSession.playbackState = 'playing';
         }
 
-        if (window.electronAPI && globalPlayingTrack) {
-            const title = (globalPlayingTrack.metadata && globalPlayingTrack.metadata.title) ? globalPlayingTrack.metadata.title : globalPlayingTrack.filename;
-            const artist = (globalPlayingTrack.metadata && globalPlayingTrack.metadata.artist) ? globalPlayingTrack.metadata.artist : 'Unknown Artist';
-            window.electronAPI.updatePresence({ title, artist, startTime: Date.now(), isPaused: false });
-        }
     });
 
     audioPlayer.addEventListener('pause', () => {
@@ -1712,11 +1717,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             navigator.mediaSession.playbackState = 'paused';
         }
 
-        if (window.electronAPI && globalPlayingTrack) {
-            const title = (globalPlayingTrack.metadata && globalPlayingTrack.metadata.title) ? globalPlayingTrack.metadata.title : globalPlayingTrack.filename;
-            const artist = (globalPlayingTrack.metadata && globalPlayingTrack.metadata.artist) ? globalPlayingTrack.metadata.artist : 'Unknown Artist';
-            window.electronAPI.updatePresence({ title, artist, isPaused: true });
-        }
     });
 
     function isTrackUnsupported(track) {
@@ -1781,7 +1781,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function _isLastTrackInContext() {
         if (userQueue.length > 0 || repeatMode !== 0 || currentPlaylistContext.length === 0) return false;
-        if (isShuffleActive) return unplayedIndices.length === 0;
+        if (isShuffleActive) return currentShufflePointer >= shuffledIndices.length - 1;
         return getNextPlayableIndex(currentTrackIndex + 1, 1, true) === -1;
     }
 
@@ -1854,8 +1854,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (index < 0 || index >= currentPlaylistContext.length) return;
 
         currentTrackIndex = index;
-        if (isShuffleActive) {
-            unplayedIndices = unplayedIndices.filter(i => i !== index);
+        
+        // Sync shuffle pointer if active
+        if (isShuffleActive && shuffledIndices.length > 0) {
+            const pos = shuffledIndices.indexOf(index);
+            if (pos !== -1) currentShufflePointer = pos;
         }
 
         const track = currentPlaylistContext[index];
@@ -1902,25 +1905,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (currentTrackIndex === -1) return;
 
         if (isShuffleActive) {
-            if (unplayedIndices.length === 0) {
+            if (currentShufflePointer >= shuffledIndices.length - 1) {
                 if (repeatMode === 0) {
                     if (pendingRecommendedTrack) {
                         const rec = pendingRecommendedTrack;
                         pendingRecommendedTrack = null;
                         currentPlaylistContext = [rec];
-                        unplayedIndices = [];
+                        shuffledIndices = [];
                         commitTrackChange(0);
                     } else {
                         audioPlayer.pause();
                     }
                     return;
                 }
-                unplayedIndices = currentPlaylistContext.map((_, i) => i)
-                    .filter(i => i !== currentTrackIndex && !isTrackUnsupported(currentPlaylistContext[i]));
-            }
-            if (unplayedIndices.length > 0) {
-                const randomIndex = Math.floor(Math.random() * unplayedIndices.length);
-                commitTrackChange(unplayedIndices[randomIndex]);
+                generateShuffleQueue();
+                commitTrackChange(shuffledIndices[currentShufflePointer]);
+            } else {
+                currentShufflePointer++;
+                commitTrackChange(shuffledIndices[currentShufflePointer]);
             }
         } else {
             const nextIdx = getNextPlayableIndex(currentTrackIndex + 1, 1, isAutoEnded);
@@ -1929,9 +1931,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else if (pendingRecommendedTrack) {
                 const rec = pendingRecommendedTrack;
                 pendingRecommendedTrack = null;
-                currentPlaylistContext = [rec];
-                unplayedIndices = [];
-                commitTrackChange(0);
+                        currentPlaylistContext = [rec];
+                        shuffledIndices = [];
+                        currentShufflePointer = -1;
+                        commitTrackChange(0);
             } else {
                 audioPlayer.pause();
             }
@@ -1944,6 +1947,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (audioPlayer.currentTime > 3) {
             audioPlayer.currentTime = 0;
             audioPlayer.play();
+            return;
+        }
+
+        if (isShuffleActive && shuffledIndices.length > 0) {
+            if (currentShufflePointer > 0) {
+                currentShufflePointer--;
+                commitTrackChange(shuffledIndices[currentShufflePointer]);
+            } else {
+                audioPlayer.currentTime = 0;
+                audioPlayer.play();
+            }
             return;
         }
 
@@ -2087,9 +2101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function isSeekingDisabled() {
-        if (!globalPlayingTrack) return false;
-        const url = globalPlayingTrack.url.toLowerCase();
-        return url.endsWith('.m4a') || url.endsWith('.aac');
+        return false; // Browser-based player supports seeking for all formats
     }
 
     progressBarContainer.addEventListener('mousedown', (e) => {
@@ -2200,6 +2212,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             setMuteIcon(false);
         }
     });
+
+    // Settings Listeners (Playback & Audio)
+    const crossfadeSlider = document.getElementById('setting-crossfade-duration');
+    const crossfadeValue = document.getElementById('setting-crossfade-value');
+    
+    if (crossfadeSlider) {
+        // Initialize from persistent storage or default
+        const initialSecs = CROSSFADE_DURATION / 1000;
+        crossfadeSlider.value = initialSecs;
+        crossfadeValue.textContent = initialSecs + 's';
+        
+        crossfadeSlider.addEventListener('input', (e) => {
+            const secs = parseInt(e.target.value);
+            CROSSFADE_DURATION = secs * 1000;
+            crossfadeValue.textContent = secs + 's';
+            localStorage.setItem('crossfadeDuration', CROSSFADE_DURATION);
+        });
+    }
 
     function updateVolumeVisuals(e) {
         const rect = volumeBarContainer.getBoundingClientRect();
@@ -2839,85 +2869,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Music Library Initialization ──────────────────
 
-    function getLocalMusicPaths() {
-        try { return JSON.parse(localStorage.getItem('localMusicPaths') || '[]'); } catch (e) { return []; }
-    }
-
-    function saveLocalMusicPaths(paths) {
-        localStorage.setItem('localMusicPaths', JSON.stringify(paths));
-    }
-
-    async function rescanLocalSources() {
-        const paths = getLocalMusicPaths();
-        if (paths.length === 0) return;
-
-        console.log('Starting global local source rescan...');
-        for (const path of paths) {
-            try {
-                await fetch(`${serverBaseUrl}/api/scan-directory`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path })
-                });
-            } catch (e) {
-                console.error(`Failed to rescan path: ${path}`, e);
-            }
-        }
-
-        localStorage.setItem('lastScanTime', Date.now().toString());
-        await initializeMusicLibrary();
-    }
-
-    function getTrackDedupeKey(track) {
-        if (track.metadata && track.metadata.title && track.metadata.artist) {
-            const title = track.metadata.title.toLowerCase().trim();
-            const artist = track.metadata.artist.toLowerCase().trim();
-            const album = (track.metadata.album || 'unknown').toLowerCase().trim();
-            const duration = track.metadata.duration ? Math.round(track.metadata.duration) : 0;
-            return `${title}|||${artist}|||${album}|||${duration}`;
-        }
-        return track.filename.toLowerCase().trim();
-    }
-
-    function deduplicateTracks(serverTracks, localTracks) {
-        const finalMap = new Map();
-
-        // Process server tracks: Mark as server-side and add to map (deduplicating by metadata)
-        serverTracks.forEach(st => {
-            st.isServer = true;
-            const key = getTrackDedupeKey(st);
-            finalMap.set(key, st);
-        });
-
-        // Process local tracks: Merge into existing server entries or add as new local entries
-        localTracks.forEach(lt => {
-            const key = getTrackDedupeKey(lt);
-            if (finalMap.has(key)) {
-                const existing = finalMap.get(key);
-                existing.isLocal = true;
-                existing.isBoth = true; // Flag for the purple indicator
-                existing.localPath = lt.relativePath; // Ensure absolute path is used for playback
-            } else {
-                lt.isLocal = true;
-                lt.isServer = false;
-                finalMap.set(key, lt);
-            }
-        });
-
-        return Array.from(finalMap.values());
-    }
-
-    async function scanLocalPath(dirPath) {
-        try {
-            const res = await fetch(`${serverBaseUrl}/api/scan-directory`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: dirPath })
-            });
-            if (res.ok) return await res.json();
-        } catch (e) { console.error('Local scan error for', dirPath, e); }
-        return [];
-    }
-
     async function initializeMusicLibrary() {
         // Any reload means track metadata may have changed — clear stale view cache entries
         _openVCDB().then(async (db) => {
@@ -2931,17 +2882,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             const serverRes = await fetch(`${serverBaseUrl}/api/audio`);
             const serverTracks = serverRes.ok ? await serverRes.json() : [];
 
-            const localPaths = getLocalMusicPaths();
-            const localArrays = await Promise.all(localPaths.map(p => scanLocalPath(p)));
-            const localTracks = localArrays.flat();
+            if (serverTracks.length === 0) return;
 
-            const merged = deduplicateTracks(serverTracks, localTracks);
+            // Mark all as server tracks
+            serverTracks.forEach(st => {
+                st.isServer = true;
+                st.isLocal = false;
+            });
 
-            if (merged.length === 0) {
-                return;
-            }
-            allTracks = merged;
-            processAlbums(merged);
+            allTracks = serverTracks;
+            processAlbums(serverTracks);
         } catch (err) {
             console.error('Error loading music library:', err);
         }
@@ -3022,7 +2972,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const firstIdx = albumInfo.tracks.findIndex(t => !isTrackUnsupported(t));
             if (firstIdx === -1) return;
             currentPlaylistContext = albumInfo.tracks;
-            if (isShuffleActive) unplayedIndices = albumInfo.tracks.map((_, i) => i);
+            if (isShuffleActive) generateShuffleQueue();
             commitTrackChange(firstIdx);
         });
 
@@ -3311,7 +3261,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const firstIdx = albumInfo.tracks.findIndex(t => !isTrackUnsupported(t));
                 if (firstIdx === -1) return;
                 currentPlaylistContext = albumInfo.tracks;
-                if (isShuffleActive) unplayedIndices = albumInfo.tracks.map((_, i) => i);
+                if (isShuffleActive) generateShuffleQueue();
                 commitTrackChange(firstIdx);
             });
         }
@@ -3615,7 +3565,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (currentPlaylistContext !== tracks && container !== queueNowPlaying) {
                     currentPlaylistContext = tracks;
-                    if (isShuffleActive) unplayedIndices = tracks.map((_, i) => i);
+                    if (isShuffleActive) generateShuffleQueue();
                 }
 
                 if (container !== queueNowPlaying) {
@@ -4550,7 +4500,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const firstIdx = pl.tracks.findIndex(t => !isTrackUnsupported(t));
                 if (firstIdx === -1) return;
                 currentPlaylistContext = pl.tracks;
-                if (isShuffleActive) unplayedIndices = pl.tracks.map((_, i) => i);
+                if (isShuffleActive) generateShuffleQueue();
                 commitTrackChange(firstIdx);
             });
             card.addEventListener('click', () => openPlaylistView(pl));
@@ -4699,7 +4649,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         playlistHeroDiv.querySelector('.playlist-play-btn').addEventListener('click', () => {
             if (!playlist.tracks || playlist.tracks.length === 0) return;
             currentPlaylistContext = playlist.tracks;
-            if (isShuffleActive) unplayedIndices = playlist.tracks.map((_, i) => i);
+            if (isShuffleActive) generateShuffleQueue();
             commitTrackChange(0);
         });
 
@@ -4922,44 +4872,37 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function playTrack(track, title, artist) {
         addToHistory(track);
-        if (window.electronAPI) {
-            window.electronAPI.updatePresence({ title, artist, startTime: Date.now(), isPaused: false });
-        }
         globalPlayingTrack = track;
         if (currentActiveBlobUrl) {
             URL.revokeObjectURL(currentActiveBlobUrl);
             currentActiveBlobUrl = null;
         }
 
-        const localPath = downloadedTracksMap.get(track.url);
+        const isDownloaded = downloadedTracksMap.has(track.url);
         let fullAudioUrl = getTrackUrlForQuality(track, 'stream');
 
-        if (localPath) {
-            if (window.electronAPI) {
-                fullAudioUrl = `simon-offline://${encodeURIComponent(localPath)}`;
-            } else if (localPath === 'indexeddb') {
-                // PWA: Play from IndexedDB
-                try {
-                    const saved = await getTrackFromIDB(track.url);
-                    if (saved && saved.blob) {
-                        currentActiveBlobUrl = URL.createObjectURL(saved.blob);
-                        fullAudioUrl = currentActiveBlobUrl;
+        if (isDownloaded) {
+            // PWA: Play from IndexedDB
+            try {
+                const saved = await getTrackFromIDB(track.url);
+                if (saved && saved.blob) {
+                    currentActiveBlobUrl = URL.createObjectURL(saved.blob);
+                    fullAudioUrl = currentActiveBlobUrl;
 
-                        // Pass cached data forward for UI display and lyrics
-                        track._cachedCover = saved.coverBlob;
-                        track._cachedLyrics = saved.lyrics;
+                    // Pass cached data forward for UI display and lyrics
+                    track._cachedCover = saved.coverBlob;
+                    track._cachedLyrics = saved.lyrics;
 
-                        console.log('[PWA] Playing from offline storage:', track.url);
-                    }
-                } catch (e) {
-                    console.error('[PWA] IDB playback failed', e);
+                    console.log('[PWA] Playing from offline storage:', track.url);
                 }
+            } catch (e) {
+                console.error('[PWA] IDB playback failed', e);
             }
         }
 
         // Update Bottom Offline Icon
         if (bottomOfflineBtn) {
-            bottomOfflineBtn.classList.toggle('downloaded', !!localPath);
+            bottomOfflineBtn.classList.toggle('downloaded', !!isDownloaded);
             bottomOfflineBtn.classList.toggle('is-local', !!track.isLocal && !track.isBoth);
             bottomOfflineBtn.classList.toggle('is-both', !!track.isBoth);
 
@@ -4967,7 +4910,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 bottomOfflineBtn.title = 'Local & Server Synced';
             } else if (track.isLocal) {
                 bottomOfflineBtn.title = 'Local File';
-            } else if (localPath) {
+            } else if (isDownloaded) {
                 bottomOfflineBtn.title = 'Available Offline';
             } else {
                 bottomOfflineBtn.title = 'Remote Source';
@@ -5059,9 +5002,131 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetchLyrics(title, artist, album, duration, track._cachedLyrics);
 
         updateMediaSession(track);
-
+        
+        // Restore standard src property so UI checks pass
         audioPlayer.src = fullAudioUrl;
-        audioPlayer.play().catch(e => console.error("Auto-play blocked/failed", e));
+
+        // Reset crossfade lockout
+        crossfadeTimeout = false;
+
+        const url = fullAudioUrl;
+        
+        if (nextHowl && nextTrackData && nextTrackData.url === track.url) {
+            console.log('[Audio] Using preloaded track:', title);
+            const oldHowl = currentHowl;
+            currentHowl = nextHowl;
+            nextHowl = null;
+            nextTrackData = null;
+
+            if (oldHowl && oldHowl.playing()) {
+                // IMPORTANT: Unbind the 'end' event so it doesn't trigger another skip when it finishes fading
+                oldHowl.off('end');
+                fadeHowl(oldHowl, 0, CROSSFADE_DURATION, () => oldHowl.unload());
+            }
+
+            // Ensure preloaded track has correct triggers connected
+            currentHowl.off('play').on('play', () => audioPlayer._trigger('play'));
+            currentHowl.off('pause').on('pause', () => audioPlayer._trigger('pause'));
+            currentHowl.off('load').on('load', () => audioPlayer._trigger('loadedmetadata'));
+
+            currentHowl.volume(0);
+            currentHowl.play();
+            fadeHowl(currentHowl, lastVolume || 0.7, CROSSFADE_DURATION);
+            
+            // Manual trigger in case it was already loaded
+            audioPlayer._trigger('loadedmetadata');
+        } else {
+            if (currentHowl) {
+                // If we are playing, fade out, otherwise just unload
+                if (currentHowl.playing()) {
+                    const old = currentHowl;
+                    old.off('end'); // Silence alarms for the old track
+                    fadeHowl(old, 0, 1000, () => old.unload());
+                } else {
+                    currentHowl.unload();
+                }
+            }
+
+            currentHowl = new Howl({
+                src: [url],
+                html5: false, // Switch to Web Audio for precision and seeking
+                autoplay: false,
+                onplay: () => audioPlayer._trigger('play'),
+                onpause: () => audioPlayer._trigger('pause'),
+                onend: () => {
+                    if (repeatMode === 2) {
+                        currentHowl.seek(0);
+                        currentHowl.play();
+                    } else {
+                        playNextTrack(true);
+                    }
+                },
+                onload: () => audioPlayer._trigger('loadedmetadata')
+            });
+            currentHowl.volume(lastVolume || 0.7);
+            currentHowl.play();
+        }
+
+        // Schedule next preload
+        setTimeout(preloadNextTrack, 5000);
+    }
+
+    function getNextTrack() {
+        if (userQueue.length > 0) return userQueue[0];
+        if (currentTrackIndex === -1) return null;
+
+        if (isShuffleActive && shuffledIndices.length > 0) {
+            if (currentShufflePointer < shuffledIndices.length - 1) {
+                return currentPlaylistContext[shuffledIndices[currentShufflePointer + 1]];
+            }
+        } else {
+            const nextIdx = getNextPlayableIndex(currentTrackIndex + 1, 1, true);
+            if (nextIdx !== -1) return currentPlaylistContext[nextIdx];
+        }
+        return pendingRecommendedTrack;
+    }
+
+    async function preloadNextTrack() {
+        const next = getNextTrack();
+        if (!next || (nextTrackData && nextTrackData.url === next.url)) return;
+
+        console.log('[Audio] Preloading next track:', next.filename);
+        
+        const isDownloaded = downloadedTracksMap.has(next.url);
+        let url = getTrackUrlForQuality(next, 'stream');
+
+        if (isDownloaded) {
+            try {
+                const saved = await getTrackFromIDB(next.url);
+                if (saved && saved.blob) {
+                    url = URL.createObjectURL(saved.blob);
+                }
+            } catch (e) {}
+        }
+
+        if (nextHowl) nextHowl.unload();
+
+        nextTrackData = next;
+        nextHowl = new Howl({
+            src: [url],
+            html5: false, // Web Audio mode
+            preload: true,
+            autoplay: false,
+            onplay: () => audioPlayer._trigger('play'),
+            onpause: () => audioPlayer._trigger('pause'),
+            onend: () => {
+                if (repeatMode === 2) {
+                    currentHowl.seek(0);
+                    currentHowl.play();
+                } else {
+                    playNextTrack(true);
+                }
+            },
+            onload: () => {
+                console.log('[Audio] Preload complete:', next.filename);
+                if (currentHowl === nextHowl) audioPlayer._trigger('loadedmetadata');
+            }
+        });
     }
 
     function updateMediaSession(track) {
@@ -5097,7 +5162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ── Offline Helper Logic ────────────────────────────────────────────────
-    async function initiatePWADownload(track) {
+    async function initiateDownload(track) {
         if (track.isLocal) return;
         const url = getTrackUrlForQuality(track, 'download');
 
@@ -5153,90 +5218,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    async function initiateDownload(track) {
-        if (track.isLocal) return;
-
-        if (!window.electronAPI) {
-            return initiatePWADownload(track);
-        }
-
-        const url = getTrackUrlForQuality(track, 'download');
-
-        pendingDownloads.set(track.url, 0);
-        refreshCurrentView(); // Show loading state
-
-        try {
-            const result = await window.electronAPI.downloadTrack({
-                url,
-                metadata: track.metadata
-            });
-
-            if (result.success) {
-                // We need to re-sync or manually update the map with the predicted localPath
-                // Better to just call syncOfflineState() to get the actual path from main
-                await syncOfflineState();
-            }
-        } catch (e) {
-            console.error('Download failed', e);
-        } finally {
-            pendingDownloads.delete(track.url);
-            refreshCurrentView();
-        }
-    }
-
-    async function initiateUpload(track) {
-        if (!window.electronAPI || !track.isLocal || track.isBoth) return;
-
-        pendingUploads.add(track.url);
-        refreshCurrentView(); // Show uploading state (purple fill)
-
-        try {
-            const result = await window.electronAPI.uploadTrack({
-                localPath: track.relativePath,
-                serverUrl: serverBaseUrl,
-                metadata: track.metadata
-            });
-
-            if (result.success) {
-                console.log('Upload successful:', track.filename);
-                // Trigger a full library re-sync to get the new 'isBoth' state
-                await initializeMusicLibrary();
-
-                // If the track we just uploaded is the one currently playing, update the bar immediately
-                if (globalPlayingTrack && getTrackDedupeKey(globalPlayingTrack) === getTrackDedupeKey(track)) {
-                    const updatedTrack = allTracks.find(t => getTrackDedupeKey(t) === getTrackDedupeKey(track));
-                    if (updatedTrack) {
-                        globalPlayingTrack = updatedTrack;
-                        updateBottomPlayerBar(updatedTrack);
-                    }
-                }
-            } else if (result.error === 'Duplicate track found') {
-                alert(`Duplicate detected: This song is already on the server in the album "${result.album}".`);
-            } else {
-                alert(`Upload failed: ${result.error}`);
-            }
-        } catch (e) {
-            console.error('Upload error:', e);
-            alert(`Upload error: ${e.message}`);
-        } finally {
-            pendingUploads.delete(track.url);
-            refreshCurrentView();
-        }
-    }
-
     async function removeOfflineTrack(trackPath) {
-        if (!window.electronAPI) {
-            await deleteTrackFromIDB(trackPath);
-            downloadedTracksMap.delete(trackPath);
-            refreshCurrentView();
-            return;
-        }
-        const fullUrl = `${serverBaseUrl}${trackPath}`;
-        const success = await window.electronAPI.deleteOfflineTrack(fullUrl);
-        if (success) {
-            downloadedTracksMap.delete(trackPath);
-            refreshCurrentView();
-        }
+        await deleteTrackFromIDB(trackPath);
+        downloadedTracksMap.delete(trackPath);
+        refreshCurrentView();
     }
 
     function refreshCurrentView() {
@@ -5253,11 +5238,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } else if (activeView.id === 'artist-view') {
             // Difficult to refresh artist view perfectly without data stored globally
-            // But usually we just refresh the track list if it's there
-            if (artistTrackList) {
-                // We'd need to re-collect the tracks. For now, let's just trigger a re-render
-                // if we have a way to track the current artist.
-            }
         } else if (activeView.id === 'playlist-view') {
             const pl = allPlaylists.find(p => p.id === activePlaylistId);
             if (pl) {
@@ -5324,37 +5304,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    if (window.electronAPI) {
-        window.electronAPI.onDownloadProgress(({ url, progress }) => {
-            // url in progress event is the full URL, we need the track path /api/audio/...
-            const trackPath = url.replace(serverBaseUrl, '');
-            pendingDownloads.set(trackPath, progress);
-            // Throttle UI refreshes? For now just refresh
-            refreshCurrentView();
-        });
-    }
-
     // Initialize offline list on start
     async function syncOfflineState() {
-        if (window.electronAPI) {
-            const meta = await window.electronAPI.getDownloadedList();
+        // PWA Fallback: Sync from IndexedDB
+        try {
+            const tracks = await getAllDownloadedFromIDB();
             downloadedTracksMap.clear();
-            for (const [fullUrl, info] of Object.entries(meta)) {
-                const trackPath = fullUrl.replace(serverBaseUrl, '');
-                downloadedTracksMap.set(trackPath, info.localPath);
-            }
-        } else {
-            // PWA Fallback: Sync from IndexedDB
-            try {
-                const tracks = await getAllDownloadedFromIDB();
-                downloadedTracksMap.clear();
-                tracks.forEach(t => {
-                    downloadedTracksMap.set(t.trackUrl, 'indexeddb');
-                });
-                console.log('[PWA] Offline state synced from IndexedDB:', downloadedTracksMap.size, 'tracks.');
-            } catch (e) {
-                console.error('[PWA] Failed to sync offline state from IndexedDB', e);
-            }
+            tracks.forEach(t => {
+                downloadedTracksMap.set(t.trackUrl, 'indexeddb');
+            });
+            console.log('[PWA] Offline state synced from IndexedDB:', downloadedTracksMap.size, 'tracks.');
+        } catch (e) {
+            console.error('[PWA] Failed to sync offline state from IndexedDB', e);
         }
         refreshCurrentView();
     }

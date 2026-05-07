@@ -1,20 +1,17 @@
 {
-  "name": "desktop-audio-player",
-  "version": "1.0.0",
-  "description": "",
-  "main": "main.js",
+  "name": "simonrelays-pwa-player",
+  "version": "1.1.0",
+  "description": "Browser-based PWA audio player for SimonRelays",
   "scripts": {
-    "start": "electron ."
+    "start": "echo 'Serve this directory with any static web server or via local-audio-server'"
   },
-  "keywords": [],
+  "keywords": [
+    "audio",
+    "player",
+    "pwa"
+  ],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "devDependencies": {
-    "electron": "^41.1.1"
-  },
-  "dependencies": {
-    "discord-rpc": "^4.0.1",
-    "dotenv": "^17.4.2"
-  }
+  "type": "module",
+  "dependencies": {}
 }

@@ -375,35 +375,7 @@ body {
     animation: spin-slow 6s linear infinite;
 }
 
-/* ── Window Controls ──────────────────────────────────────────────────────── */
-.window-controls {
-    display: flex;
-    align-items: center;
-    margin-left: 8px;
-}
 
-.win-btn {
-    width: 32px;
-    height: 32px;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: default;
-    transition: background 0.15s, color 0.15s;
-}
-
-.win-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-}
-
-.win-btn.close-btn:hover {
-    background: #e81123;
-    color: white;
-}
 
 .win-btn svg {
     opacity: 0.8;
@@ -3042,9 +3014,6 @@ body {
         display: none !important;
     }
 
-    .window-controls {
-        display: none !important;
-    }
 
     .mobile-bottom-nav {
         display: flex;
