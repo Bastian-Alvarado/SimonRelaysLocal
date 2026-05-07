@@ -710,9 +710,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Immersive UI logic ───────────────────────────────────────────────────
     function toggleImmersiveView() {
         if (immersiveView.classList.contains('active')) {
-            history.back();
+            hideImmersiveOverlay();
+            
+            // Clean up the URL hash without triggering a 'back' event.
+            // We return to 'home' to ensure the UI stays in a valid state.
+            history.replaceState({ viewId: 'home', stateData: {} }, '', '#home');
+            switchToHomeView(false);
         } else {
-            navigateTo('immersive');
+            // If we're entering immersive mode from an overlay (Settings, Profile, etc.),
+            // replace the current history entry so that exiting immersive mode doesn't
+            // re-open the overlay we just came from.
+            const isOverlayActive = (settingsView && settingsView.classList.contains('active')) || 
+                                   (profileView && profileView.classList.contains('active'));
+            
+            if (isOverlayActive) {
+                history.replaceState({ viewId: 'immersive', stateData: {} }, '', '#immersive');
+                renderState('immersive', {});
+            } else {
+                navigateTo('immersive');
+            }
         }
     }
     if (expandImmersiveBtn) {
@@ -758,6 +774,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         openViewAnimated(immersiveView);
         if (expandImmersiveBtn) expandImmersiveBtn.classList.add('active-icon');
 
+        // Toggle Browser Fullscreen
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(err => {
+                console.warn(`[UI] Fullscreen request failed: ${err.message}`);
+            });
+        }
+
         // Global state initialization
         document.body.classList.add('immersive-active');
         const playerBar = document.querySelector('.player-bar');
@@ -777,12 +800,32 @@ document.addEventListener('DOMContentLoaded', async () => {
             closeViewAnimated(immersiveView, 500);
             if (expandImmersiveBtn) expandImmersiveBtn.classList.remove('active-icon');
 
+            // Exit Browser Fullscreen
+            if (document.fullscreenElement && document.exitFullscreen) {
+                document.exitFullscreen().catch(err => {
+                    console.warn(`[UI] Exit fullscreen failed: ${err.message}`);
+                });
+            }
+
             // Global state cleanup
             document.body.classList.remove('immersive-active');
             const playerBar = document.querySelector('.player-bar');
             if (playerBar) playerBar.classList.remove('fullscreen-active');
         }
     }
+
+    // Auto-exit immersive if user exits fullscreen manually (e.g. Escape key)
+    document.addEventListener('fullscreenchange', () => {
+        if (!document.fullscreenElement && immersiveView && immersiveView.classList.contains('active')) {
+            // Only exit if the URL hash is still #immersive
+            if (window.location.hash === '#immersive') {
+                hideImmersiveOverlay();
+                // Return to home state without triggering a 'back' event
+                history.replaceState({ viewId: 'home', stateData: {} }, '', '#home');
+                switchToHomeView(false);
+            }
+        }
+    });
 
     // ── Up Next Badge ─────────────────────────────────────────────────────────
     function updateImmersiveUpNext() {
@@ -903,24 +946,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     function openSettings(push = true) {
         if (push) navigateTo('settings');
         hideOverlays('settings'); // Close other overlays first
+        renderSettingsPanel();
+        settingsView.classList.remove('hidden');
         settingsView.classList.add('active');
         if (settingsBtn) settingsBtn.classList.add('settings-btn-active');
     }
 
     function closeSettings() {
         settingsView.classList.remove('active');
-        settingsBtn.classList.remove('settings-btn-active');
+        settingsView.classList.add('hidden');
+        if (settingsBtn) settingsBtn.classList.remove('settings-btn-active');
     }
 
     function openProfile(push = true) {
         if (push) navigateTo('profile');
         hideOverlays('profile');
+        profileView.classList.remove('hidden');
         profileView.classList.add('active');
         if (profileBtn) profileBtn.classList.add('settings-btn-active');
     }
 
     function closeProfile() {
         profileView.classList.remove('active');
+        profileView.classList.add('hidden');
         if (profileBtn) profileBtn.classList.remove('settings-btn-active');
     }
 
@@ -1064,7 +1112,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (settingsView.classList.contains('active')) {
             closeSettings();
         } else {
-            renderSettingsPanel();
             openSettings();
         }
     });
@@ -1213,7 +1260,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         metadataArtistInput.value = (track.metadata && track.metadata.artist) ? track.metadata.artist : '';
         metadataAlbumInput.value = (track.metadata && track.metadata.album) ? track.metadata.album : '';
         metadataYearInput.value = (track.metadata && track.metadata.year) ? track.metadata.year : '';
-        const currentGenre = (track.metadata && track.metadata.genre) ? (Array.isArray(track.metadata.genre) ? track.metadata.genre[0] : track.metadata.genre) : '';
+        const currentGenre = (track.metadata && track.metadata.genre) 
+            ? (Array.isArray(track.metadata.genre) ? track.metadata.genre.join(', ') : track.metadata.genre) 
+            : '';
         metadataGenreInput.value = currentGenre;
 
         if (track.hasBackup) {
@@ -1297,7 +1346,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 artist: metadataArtistInput.value.trim(),
                 album: metadataAlbumInput.value.trim(),
                 year: metadataYearInput.value,
-                genre: metadataGenreInput.value.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+                genre: metadataGenreInput.value.trim().split(',').map(s => s.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')).filter(Boolean).join(', ')
             },
             coverArt: null // coverArt editing disabled at song level
         };
@@ -2491,6 +2540,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         playlistView.classList.remove('hidden'); playlistView.classList.add('active');
     }
 
+    // Handle initial state or refresh
+    [homeView, searchView, queueView, settingsView].forEach(view => {
+        if (view) {
+            view.classList.add('hidden');
+            view.classList.remove('active');
+        }
+    });
+
+    // Helper to calculate how many items fit in a horizontal row
+    function calculateItemsPerRow(itemWidth = 200, gap = 24, padding = 80) {
+        const scale = typeof getZoomScale === 'function' ? getZoomScale() : 1;
+        // Adjust the available width based on the internal application zoom
+        const availableWidth = (window.innerWidth / scale) - padding;
+        // Use ceil and add 1 to ensure we always overflow slightly into the right-side fade mask
+        const count = Math.ceil((availableWidth + gap) / (itemWidth + gap)) + 1;
+        return Math.max(8, count); 
+    }
+
+    // Refresh home grid on resize to adjust item counts
+    window.addEventListener('resize', () => {
+        if (homeView.classList.contains('active')) {
+            renderHomeGrid();
+        }
+    });
+
     if (playlistBackBtn) {
         playlistBackBtn.addEventListener('click', () => history.back());
     }
@@ -2998,8 +3072,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Sort descending by when file was added to library
         albumsArray.sort((a, b) => b.addedAt - a.addedAt);
 
-        // Take up to exactly 8 albums for the 'recently added' strip
-        const recentAlbums = albumsArray.slice(0, 8);
+        // Calculate dynamic count based on screen width (min 8)
+        const count = calculateItemsPerRow();
+        const recentAlbums = albumsArray.slice(0, count);
         recentAlbums.forEach(albumInfo => {
             recentList.appendChild(createAlbumCard(albumInfo));
         });
@@ -3202,7 +3277,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         let genresHtml = '';
         if (albumGenres.size > 0) {
-            genresHtml = Array.from(albumGenres).slice(0, 3).map(g => 
+            // Removed .slice(0, 3) to show all genres in the album banner
+            genresHtml = Array.from(albumGenres).map(g => 
                 `<span style="background: rgba(255,255,255,0.1); color: var(--text-secondary); padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px; border: 1px solid rgba(255,255,255,0.05); text-transform: uppercase; letter-spacing: 0.5px;">${g}</span>`
             ).join('');
         } else {
@@ -4837,8 +4913,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        const top8 = recentNames.slice(0, 8);
-        top8.forEach(artistName => {
+        const count = calculateItemsPerRow();
+        const topArtists = recentNames.slice(0, count);
+        topArtists.forEach(artistName => {
             const card = document.createElement('div');
             card.className = 'artist-card';
             card.innerHTML = `
@@ -4868,6 +4945,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             return qualityUrl.startsWith('http') ? qualityUrl : `${serverBaseUrl}${qualityUrl}`;
         }
         return `${serverBaseUrl}${track.url}`;
+    }
+
+    function getPlaybackFormat(track, type = 'stream') {
+        const qualityPref = type === 'stream' 
+            ? (localStorage.getItem('streamQuality') || 'original')
+            : (localStorage.getItem('downloadQuality') || 'original');
+            
+        if (track.qualities && track.qualities[qualityPref]) {
+            const rawFormat = track.qualities[qualityPref].format;
+            if (rawFormat) {
+                const f = rawFormat.toLowerCase();
+                if (f.includes('mpeg') || f.includes('mp3')) return 'mp3';
+                if (f.includes('flac')) return 'flac';
+                if (f.includes('aac')) return 'aac';
+                if (f.includes('m4a')) return 'm4a';
+                return f;
+            }
+        }
+        // Fallback to extension from filename or url
+        const source = track.relativePath || track.url || track.filename || '';
+        const ext = source.split('.').pop().toLowerCase();
+        return ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac'].includes(ext) ? ext : null;
     }
 
     async function playTrack(track, title, artist) {
@@ -5047,8 +5146,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
 
+            const format = getPlaybackFormat(track, 'stream');
             currentHowl = new Howl({
                 src: [url],
+                format: format ? [format] : undefined,
                 html5: false, // Switch to Web Audio for precision and seeking
                 autoplay: false,
                 onplay: () => audioPlayer._trigger('play'),
@@ -5061,7 +5162,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         playNextTrack(true);
                     }
                 },
-                onload: () => audioPlayer._trigger('loadedmetadata')
+                onload: () => audioPlayer._trigger('loadedmetadata'),
+                onloaderror: (id, err) => {
+                    console.error('[Audio] Howl load error:', err, 'URL:', url, 'Format:', format);
+                }
             });
             currentHowl.volume(lastVolume || 0.7);
             currentHowl.play();
@@ -5107,8 +5211,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (nextHowl) nextHowl.unload();
 
         nextTrackData = next;
+        const format = getPlaybackFormat(next, 'stream');
         nextHowl = new Howl({
             src: [url],
+            format: format ? [format] : undefined,
             html5: false, // Web Audio mode
             preload: true,
             autoplay: false,
@@ -5125,6 +5231,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             onload: () => {
                 console.log('[Audio] Preload complete:', next.filename);
                 if (currentHowl === nextHowl) audioPlayer._trigger('loadedmetadata');
+            },
+            onloaderror: (id, err) => {
+                console.error('[Audio] Howl preload error:', err, 'URL:', url, 'Format:', format);
             }
         });
     }
