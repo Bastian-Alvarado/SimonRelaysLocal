@@ -5667,7 +5667,7 @@ function openEditAlbumModal(albumInfo) {
             currentHowl = new Howl({
                 src: [url],
                 format: format ? [format] : undefined,
-                html5: false, // Switch to Web Audio for precision and seeking
+                html5: true, // Enable HTML5 mode for progressive streaming
                 autoplay: false,
                 onplay: () => audioPlayer._trigger('play'),
                 onpause: () => audioPlayer._trigger('pause'),
@@ -5732,8 +5732,8 @@ function openEditAlbumModal(albumInfo) {
         nextHowl = new Howl({
             src: [url],
             format: format ? [format] : undefined,
-            html5: false, // Web Audio mode
-            preload: true,
+            html5: true, // Enable HTML5 mode for progressive streaming
+            preload: false, // Disable preloading in HTML5 mode to prevent browser suspension
             autoplay: false,
             onplay: () => audioPlayer._trigger('play'),
             onpause: () => audioPlayer._trigger('pause'),
