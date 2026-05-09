@@ -912,7 +912,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Render User Queue
         if (userQueue.length > 0) {
             queueUserSection.style.display = 'flex';
-            renderTrackList(userQueue, queueUserList);
+            renderTrackList(userQueue, queueUserList, false, null, true, false, true); // Added isQueueView=true
         } else {
             queueUserSection.style.display = 'none';
         }
@@ -936,10 +936,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (contextRemaining.length > 0) {
-            renderTrackList(contextRemaining.slice(0, 50), queueContextList); // limit to 50 to prevent freezing
+            renderTrackList(contextRemaining.slice(0, 50), queueContextList, false, null, true, false, true); // Added isQueueView=true
         } else {
             queueContextList.innerHTML = '<div class="search-empty-text" style="font-size:14px; opacity:0.5;">End of list</div>';
         }
+    }
+
+    function removeFromQueue(index, fromUserQueue) {
+        if (fromUserQueue) {
+            userQueue.splice(index, 1);
+        } else {
+            // Index j in contextRemaining is index currentTrackIndex + 1 + j in currentPlaylistContext
+            const realIndex = currentTrackIndex + 1 + index;
+            if (realIndex > currentTrackIndex && realIndex < currentPlaylistContext.length) {
+                currentPlaylistContext.splice(realIndex, 1);
+            }
+        }
+        
+        _fillInfiniteBuffer();
+        renderQueueView();
+        updateImmersiveUpNext();
     }
 
     function addToQueue(track) {
@@ -3845,7 +3861,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ── Track List Rendering ──────────────────────────────────────────────────
-    function renderTrackList(tracks, container = trackListElement, isPlaylistView = false, playlistId = null, canEdit = true, showTrackNumbers = false) {
+    function renderTrackList(tracks, container = trackListElement, isPlaylistView = false, playlistId = null, canEdit = true, showTrackNumbers = false, isQueueView = false) {
         container.innerHTML = '';
 
         // Hydrate tracks with library data if metadata is sparse (common for cloud-synced or cached items)
@@ -3879,14 +3895,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 4h2v2H9zm4 0h2v2h-2zm-4 7h2v2H9zm4 0h2v2h-2zm-4 7h2v2H9zm4 0h2v2h-2z"/></svg>
                 </div>` : '';
 
-            // Remove button (playlist view) vs Add-to-playlist button (other views)
-            const actionBtnHtml = (isPlaylistView && canEdit) ? `
-                <button class="remove-from-playlist-btn" title="Remove from playlist">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>` : `
-                <button class="add-to-playlist-btn" title="Add to playlist">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                </button>`;
+            // Action buttons: Remove (Playlist/Queue) vs Add-to-playlist (other)
+            let actionBtnHtml = '';
+            if (isPlaylistView && canEdit) {
+                actionBtnHtml = `
+                    <button class="remove-from-playlist-btn" title="Remove from playlist">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>`;
+            } else if (isQueueView) {
+                actionBtnHtml = `
+                    <button class="remove-from-queue-btn" title="Remove from queue">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>`;
+            } else {
+                actionBtnHtml = `
+                    <button class="add-to-playlist-btn" title="Add to playlist">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </button>`;
+            }
 
             const isDownloaded = downloadedTracksMap.has(track.url);
             const downloadProgress = pendingDownloads.get(track.url);
@@ -4032,6 +4058,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 removeBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     removeTrackFromPlaylist(playlistId, track.url, trackItem);
+                });
+            }
+
+            // Remove from queue handler
+            const removeQueueBtn = trackItem.querySelector('.remove-from-queue-btn');
+            if (removeQueueBtn) {
+                removeQueueBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeFromQueue(index, container === queueUserList);
                 });
             }
 

@@ -3653,7 +3653,8 @@ body {
 
 .track-offline-btn,
 .add-to-playlist-btn,
-.remove-from-playlist-btn {
+.remove-from-playlist-btn,
+.remove-from-queue-btn {
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -3663,7 +3664,8 @@ body {
 
 .track-offline-btn:hover,
 .add-to-playlist-btn:hover,
-.remove-from-playlist-btn:hover {
+.remove-from-playlist-btn:hover,
+.remove-from-queue-btn:hover {
     background: rgba(255, 255, 255, 0.1);
     opacity: 1;
 }
@@ -3675,7 +3677,8 @@ body {
 
 .track-item:hover .track-offline-btn,
 .track-item:hover .add-to-playlist-btn,
-.track-item:hover .remove-from-playlist-btn {
+.track-item:hover .remove-from-playlist-btn,
+.track-item:hover .remove-from-queue-btn {
     opacity: 1;
 }
 
