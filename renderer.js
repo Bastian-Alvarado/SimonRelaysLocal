@@ -2,7 +2,7 @@ const DEFAULT_SERVER_URL = 'https://localhost:3000';
 const CURRENT_SERVER_URL = localStorage.getItem('serverUrl');
 // Keep HTTP if it's explicitly set to localhost for development
 if (CURRENT_SERVER_URL === 'http://localhost:3000' && window.location.hostname !== 'localhost') {
-    localStorage.removeItem('serverUrl'); 
+    localStorage.removeItem('serverUrl');
 }
 
 const isServedFromServer = (window.location.protocol.startsWith('http')) &&
@@ -25,9 +25,10 @@ let albumCoverCache = new Map();
  */
 function splitArtists(raw) {
     if (!raw) return ['Unknown Artist'];
-    // Split on: semicolons, feat./ft./featuring (with optional dot), ampersand, or comma
-    // The " x " pattern requires spaces to avoid splitting "Dax" into "Da" + ""
-    const parts = raw.split(/\s*;\s*|\s*,\s*|\s+feat\.?\s+|\s+ft\.?\s+|\s+featuring\s+|\s+&\s+|\s+x\s+/i);
+    // If raw is already an array, just return it (after trimming)
+    if (Array.isArray(raw)) return raw.map(s => String(s).trim()).filter(s => s.length > 0);
+
+    const parts = String(raw).split(/\s*;\s*|\s*,\s*|\s+feat\.?\s+|\s+ft\.?\s+|\s+featuring\s+|\s+&\s+|\s+x\s+/i);
     const cleaned = parts.map(s => s.trim()).filter(s => s.length > 0);
     return cleaned.length > 0 ? cleaned : ['Unknown Artist'];
 }
@@ -95,7 +96,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Global Player Bar Nodes
     const trackListElement = document.getElementById('track-list');
-    
+
     // ── Howler.js Audio Engine Wrapper (Hybrid Proxy) ───────────────────────────
     Howler.autoUnlock = true;
     let currentHowl = null;
@@ -106,20 +107,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     let CROSSFADE_DURATION = parseInt(localStorage.getItem('crossfadeDuration')) || 5000;
 
     const audioPlayer = document.getElementById('audio-player');
-    
+
     // Override methods/properties to redirect to Howler
     audioPlayer._originalPlay = audioPlayer.play;
     audioPlayer._originalPause = audioPlayer.pause;
-    
-    audioPlayer.play = function() {
+
+    audioPlayer.play = function () {
         if (currentHowl) {
             currentHowl.play();
             return Promise.resolve();
         }
         return Promise.reject('No track loaded');
     };
-    
-    audioPlayer.pause = function() {
+
+    audioPlayer.pause = function () {
         if (currentHowl) currentHowl.pause();
     };
 
@@ -158,7 +159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Helper for triggering standard DOM events
-    audioPlayer._trigger = function(eventName) {
+    audioPlayer._trigger = function (eventName) {
         this.dispatchEvent(new Event(eventName));
     };
 
@@ -182,7 +183,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const duration = audioPlayer.duration;
             const seek = audioPlayer.currentTime;
             const remain = duration - seek;
-            
+
             if (duration > 10 && seek > 10 && remain > 0 && remain <= (CROSSFADE_DURATION / 1000) && !crossfadeTimeout) {
                 console.log('[Audio] Crossfade threshold reached. Pre-starting next track...');
                 crossfadeTimeout = true; // prevent double trigger
@@ -292,13 +293,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         // ── Auth State Listener ──────────────────────────────────────────────
         window._fbAuth.onAuthStateChanged(user => {
             currentUser = user;
-            
+
             const likeTrackBtn = document.getElementById('like-track-btn');
-            
+
             if (user) {
                 console.log('[Cloud] User logged in:', user.email);
                 if (loginOverlay) loginOverlay.classList.add('hidden');
-                
+
                 if (likeTrackBtn) likeTrackBtn.style.display = '';
 
                 // Trigger fetch from Firebase
@@ -311,20 +312,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (profileView && profileView.classList.contains('active')) renderProfilePanel();
             } else {
                 console.log('[Cloud] User logged out.');
-                
+
                 if (likeTrackBtn) likeTrackBtn.style.display = 'none';
-                
+
                 // Show login overlay if not skipped in session
                 if (loginOverlay && !sessionStorage.getItem('skipLogin')) {
                     loginOverlay.classList.remove('hidden');
                 }
-                
+
                 // Clear playlists and likes on logout
                 allPlaylists = [];
                 likedTracks.clear();
                 allLikedTracksCache = [];
                 updateLikeButtonState();
-                
+
                 renderPlaylistsStrip();
                 fetchPlaylists(); // Will trigger local fallback or empty render
 
@@ -581,9 +582,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     function generateShuffleQueue(startIndex = -1) {
         const indices = currentPlaylistContext.map((_, i) => i)
             .filter(i => !isTrackUnsupported(currentPlaylistContext[i]));
-        
+
         const shuffled = shuffleArray(indices);
-        
+
         if (startIndex !== -1) {
             const pos = shuffled.indexOf(startIndex);
             if (pos !== -1) {
@@ -591,7 +592,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 shuffled.unshift(startIndex);
             }
         }
-        
+
         shuffledIndices = shuffled;
         currentShufflePointer = 0;
     }
@@ -727,7 +728,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function toggleImmersiveView() {
         if (immersiveView.classList.contains('active')) {
             hideImmersiveOverlay();
-            
+
             // Clean up the URL hash without triggering a 'back' event.
             // We return to 'home' to ensure the UI stays in a valid state.
             history.replaceState({ viewId: 'home', stateData: {} }, '', '#home');
@@ -736,9 +737,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             // If we're entering immersive mode from an overlay (Settings, Profile, etc.),
             // replace the current history entry so that exiting immersive mode doesn't
             // re-open the overlay we just came from.
-            const isOverlayActive = (settingsView && settingsView.classList.contains('active')) || 
-                                   (profileView && profileView.classList.contains('active'));
-            
+            const isOverlayActive = (settingsView && settingsView.classList.contains('active')) ||
+                (profileView && profileView.classList.contains('active'));
+
             if (isOverlayActive) {
                 history.replaceState({ viewId: 'immersive', stateData: {} }, '', '#immersive');
                 renderState('immersive', {});
@@ -977,7 +978,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function openProfile(push = true) {
         if (push) navigateTo('profile');
         hideOverlays();
-        
+
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         searchView.classList.remove('active'); searchView.classList.add('hidden');
         albumView.classList.remove('active'); albumView.classList.add('hidden');
@@ -1234,7 +1235,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-function openEditAlbumModal(albumInfo) {
+    function openEditAlbumModal(albumInfo) {
         isAlbumMode = true;
         currentEditingAlbum = albumInfo;
         newCoverArtBase64 = null;
@@ -1287,12 +1288,12 @@ function openEditAlbumModal(albumInfo) {
 
     async function runMetadataHealthCheck() {
         if (!currentEditingAlbum) return;
-        
+
         const checkCover = checkCoverArtToggle.checked;
         const checkArtists = checkArtistsToggle.checked;
         const checkNames = checkSongNamesToggle.checked;
         const checkGenres = checkGenresToggle ? checkGenresToggle.checked : false;
-        
+
         if (!checkCover && !checkArtists && !checkNames && !checkGenres) {
             alert("Please select at least one category to check.");
             return;
@@ -1307,19 +1308,19 @@ function openEditAlbumModal(albumInfo) {
                 const mbAlbPath = `release-group?query=releasegroup:"${encodeURIComponent(currentEditingAlbum.name)}" AND artist:"${encodeURIComponent(currentEditingAlbum.artist)}"&fmt=json`;
                 const mbAlbRes = await fetch(`${serverBaseUrl}/api/musicbrainz-proxy?path=${encodeURIComponent(mbAlbPath)}`);
                 const mbAlbData = await mbAlbRes.json();
-                
+
                 if (mbAlbData['release-groups'] && mbAlbData['release-groups'].length > 0) {
                     const releaseGroupId = mbAlbData['release-groups'][0].id;
                     const mbDetailRes = await fetch(`${serverBaseUrl}/api/musicbrainz-proxy?path=${encodeURIComponent(`release-group/${releaseGroupId}?inc=genres+tags&fmt=json`)}`);
                     const mbDetailData = await mbDetailRes.json();
-                    
+
                     if (mbDetailData.genres) albumLevelGenres.push(...mbDetailData.genres.map(g => g.name));
                     if (mbDetailData.tags) {
                         // Only take tags with count > 0 if available
                         albumLevelGenres.push(...mbDetailData.tags.map(t => t.name));
                     }
                 }
-                
+
                 // Last.fm Album Search (Already works well, keep as backup)
                 const lfmAlbRes = await fetch(`${serverBaseUrl}/api/lastfm-proxy?method=album.getInfo&artist=${encodeURIComponent(currentEditingAlbum.artist)}&album=${encodeURIComponent(currentEditingAlbum.name)}`);
                 const lfmAlbData = await lfmAlbRes.json();
@@ -1334,7 +1335,7 @@ function openEditAlbumModal(albumInfo) {
         checkStartBtn.disabled = true;
         checkStartBtn.textContent = "Checking...";
         checkProgressContainer.classList.remove('hidden');
-        
+
         try {
             // 1. Search for the album on Deezer (Optional source)
             let deezerTracks = [];
@@ -1345,7 +1346,7 @@ function openEditAlbumModal(albumInfo) {
                 checkProgressStatus.textContent = "Searching Deezer...";
                 const searchRes = await fetch(`${serverBaseUrl}/api/deezer-search?type=album&q=${encodeURIComponent(currentEditingAlbum.artist + ' ' + currentEditingAlbum.name)}`);
                 const searchData = await searchRes.json();
-                
+
                 if (searchData.data && searchData.data.length > 0) {
                     const deezerAlbum = searchData.data[0];
                     deezerAlbumId = deezerAlbum.id;
@@ -1370,7 +1371,7 @@ function openEditAlbumModal(albumInfo) {
                 const localTrack = currentEditingAlbum.tracks[i];
                 const localTitle = (localTrack.metadata && localTrack.metadata.title) ? localTrack.metadata.title : localTrack.filename;
                 const localArtist = (localTrack.metadata && localTrack.metadata.artist) ? localTrack.metadata.artist : currentEditingAlbum.artist;
-                
+
                 checkProgressStatus.textContent = `Checking ${i + 1}/${totalTracks}: ${localTitle}`;
                 const progress = Math.round(((i + 1) / totalTracks) * 100);
                 checkProgressBar.style.width = progress + '%';
@@ -1378,7 +1379,7 @@ function openEditAlbumModal(albumInfo) {
 
                 // Find matching track on Deezer if available
                 const match = deezerTracks.find(dt => fuzzyMatch(dt.title, localTitle));
-                
+
                 const update = {
                     relativePath: localTrack.relativePath,
                     isLocal: !!localTrack.isLocal,
@@ -1408,10 +1409,10 @@ function openEditAlbumModal(albumInfo) {
                     if (checkArtists) {
                         const dzArtist = trackFullArtists || (match.artist && match.artist.name ? match.artist.name : '');
                         const localArtistStr = (localTrack.metadata && localTrack.metadata.artist) ? localTrack.metadata.artist : '';
-                        
+
                         const localArtists = localArtistStr.split(',').map(a => a.trim()).filter(a => a);
                         const newArtists = dzArtist.split(',').map(a => a.trim()).filter(a => a);
-                        
+
                         const mergedArtists = [...new Set([...localArtists, ...newArtists])];
                         const mergedArtistStr = mergedArtists.join(', ');
 
@@ -1451,14 +1452,14 @@ function openEditAlbumModal(albumInfo) {
                             const mbPath = `recording?query=recording:"${encodeURIComponent(searchTitle)}" AND artist:"${encodeURIComponent(searchArtist)}"&fmt=json`;
                             const mbSearchRes = await fetch(`${serverBaseUrl}/api/musicbrainz-proxy?path=${encodeURIComponent(mbPath)}`);
                             const mbSearchData = await mbSearchRes.json();
-                            
+
                             if (mbSearchData.recordings && mbSearchData.recordings.length > 0) {
                                 const mbRecording = mbSearchData.recordings[0];
                                 const mbid = mbRecording.id;
                                 const mbDetailPath = `recording/${mbid}?inc=genres+tags&fmt=json`;
                                 const mbDetailRes = await fetch(`${serverBaseUrl}/api/musicbrainz-proxy?path=${encodeURIComponent(mbDetailPath)}`);
                                 const mbDetailData = await mbDetailRes.json();
-                                
+
                                 if (mbDetailData.genres) trackTags.push(...mbDetailData.genres.map(g => g.name));
                                 if (mbDetailData.tags) {
                                     trackTags.push(...mbDetailData.tags.filter(t => t.count > 0).map(t => t.name));
@@ -1475,7 +1476,7 @@ function openEditAlbumModal(albumInfo) {
                                 trackTags.push(...tags.slice(0, 5).map(t => t.name));
                             }
                         } catch (e) { console.error("Last.fm lookup failed", e); }
-                        
+
                         // 3. Smart Fallback Logic
                         let finalTrackGenres = [];
                         if (trackTags.length > 0) {
@@ -1494,14 +1495,14 @@ function openEditAlbumModal(albumInfo) {
                         }
 
                         if (trackSpecificGenre) {
-                            const localGenreStr = (localTrack.metadata && localTrack.metadata.genre) 
-                                ? (Array.isArray(localTrack.metadata.genre) ? localTrack.metadata.genre.join(', ') : localTrack.metadata.genre) 
+                            const localGenreStr = (localTrack.metadata && localTrack.metadata.genre)
+                                ? (Array.isArray(localTrack.metadata.genre) ? localTrack.metadata.genre.join(', ') : localTrack.metadata.genre)
                                 : '';
-                            
+
                             const splitRegex = /[,/;\\]+/;
                             const localGenres = localGenreStr.split(splitRegex).map(g => g.trim()).filter(g => g);
                             const newGenres = trackSpecificGenre.split(splitRegex).map(g => g.trim()).filter(g => g);
-                            
+
                             const mergedGenres = [...new Set([...localGenres, ...newGenres])];
                             const mergedGenreStr = mergedGenres.join(', ');
 
@@ -1521,7 +1522,7 @@ function openEditAlbumModal(albumInfo) {
             // 4. Apply corrections
             if (corrections.length > 0) {
                 checkProgressStatus.textContent = `Applying ${corrections.length} corrections...`;
-                
+
                 for (const corr of corrections) {
                     await fetch(`${serverBaseUrl}/api/update-metadata`, {
                         method: 'POST',
@@ -1529,10 +1530,10 @@ function openEditAlbumModal(albumInfo) {
                         body: JSON.stringify(corr)
                     });
                 }
-                
+
                 checkProgressStatus.textContent = "Done! Library refreshing...";
                 await initializeMusicLibrary();
-                
+
                 // CRITICAL: Refresh the current view to show the new merged data
                 if (currentEditingAlbum && typeof albumsData !== 'undefined') {
                     const refreshedAlbum = albumsData[currentEditingAlbum.name];
@@ -1540,7 +1541,7 @@ function openEditAlbumModal(albumInfo) {
                         openAlbumView(refreshedAlbum, false);
                     }
                 }
-                
+
                 alert(`Health Check Complete!\nApplied ${corrections.length} corrections.`);
             } else {
                 alert("Health Check Complete! All metadata appears to be correct.");
@@ -1559,7 +1560,7 @@ function openEditAlbumModal(albumInfo) {
     function fuzzyMatch(s1, s2) {
         if (!s1 || !s2) return false;
         const clean = s => s.toString().toLowerCase()
-            .replace(/\(.*\)/g, '') 
+            .replace(/\(.*\)/g, '')
             .replace(/\[.*\]/g, '')
             .replace(/[^a-z0-9]/g, '')
             .trim();
@@ -1588,8 +1589,8 @@ function openEditAlbumModal(albumInfo) {
         metadataArtistInput.value = (track.metadata && track.metadata.artist) ? track.metadata.artist : '';
         metadataAlbumInput.value = (track.metadata && track.metadata.album) ? track.metadata.album : '';
         metadataYearInput.value = (track.metadata && track.metadata.year) ? track.metadata.year : '';
-        const currentGenre = (track.metadata && track.metadata.genre) 
-            ? (Array.isArray(track.metadata.genre) ? track.metadata.genre.join(', ') : track.metadata.genre) 
+        const currentGenre = (track.metadata && track.metadata.genre)
+            ? (Array.isArray(track.metadata.genre) ? track.metadata.genre.join(', ') : track.metadata.genre)
             : '';
         metadataGenreInput.value = currentGenre;
 
@@ -2042,7 +2043,7 @@ function openEditAlbumModal(albumInfo) {
             shuffledIndices = [];
             currentShufflePointer = -1;
         }
-        
+
         // Refresh UI and preloader for the new sequence
         updateImmersiveUpNext();
         if (queueView && queueView.classList.contains('active')) renderQueueView();
@@ -2100,13 +2101,13 @@ function openEditAlbumModal(albumInfo) {
     function isTrackUnsupported(track) {
         if (!track || !track.filename) return false;
         const lower = track.filename.toLowerCase();
-        
+
         // M4A/AAC are generally supported, UNLESS it's ALAC (Lossless M4A) 
         // which most browsers don't support natively.
         if (lower.endsWith('.m4a') && track.metadata && track.metadata.lossless) {
             return true;
         }
-        
+
         // Block other strictly unsupported formats if any (none currently identified as critical)
         return false;
     }
@@ -2159,10 +2160,19 @@ function openEditAlbumModal(albumInfo) {
 
     // ── Infinite Play Engine ──────────────────────────────────────────────────
     function _updateSessionAffinity(track) {
-        const artist = track.metadata?.artist || '';
-        const genre = track.metadata?.genre || '';
-        if (artist) sessionAffinity.artists[artist] = ((sessionAffinity.artists[artist] || 0) * 0.75) + 1.0;
-        if (genre) sessionAffinity.genres[genre] = ((sessionAffinity.genres[genre] || 0) * 0.75) + 1.0;
+        const artists = splitArtists(track.metadata?.artist || '');
+        const rawGenre = track.metadata?.genre || '';
+        const genres = (Array.isArray(rawGenre) ? rawGenre : String(rawGenre).split(/[,\/;]+/)).map(g => String(g).trim()).filter(g => g.length > 0);
+        
+        artists.forEach(a => {
+            if (a !== 'Unknown Artist') {
+                // Aggressive decay (0.3 instead of 0.75) to prevent sticky affinity
+                sessionAffinity.artists[a] = ((sessionAffinity.artists[a] || 0) * 0.3) + 1.0;
+            }
+        });
+        genres.forEach(g => {
+            sessionAffinity.genres[g] = ((sessionAffinity.genres[g] || 0) * 0.6) + 1.0;
+        });
     }
 
     function _isLastTrackInContext() {
@@ -2181,44 +2191,86 @@ function openEditAlbumModal(albumInfo) {
         if (candidates.length === 0) return null;
 
         const scored = candidates.map(track => {
-            const artist = track.metadata?.artist || '';
-            const genre = track.metadata?.genre || '';
+            const trackArtists = splitArtists(track.metadata?.artist || '');
+            const rawGenre = track.metadata?.genre || '';
+            const trackGenres = (Array.isArray(rawGenre) ? rawGenre : String(rawGenre).split(/[,\/;]+/)).map(g => String(g).trim()).filter(g => g.length > 0);
             const year = parseInt(track.metadata?.year) || 0;
             let score = 0;
 
-            // Artist affinity (0-40 pts)
-            score += (sessionAffinity.artists[artist] || 0) * 40;
-            // Genre affinity (0-20 pts)
-            score += (sessionAffinity.genres[genre] || 0) * 20;
-            // Era proximity — 1 pt per year, max 10 (within 10-year window)
-            if (currentYear && year) score += Math.max(0, 10 - Math.abs(currentYear - year));
-            // Recency penalty — exponential decay, -50 at position 0, ~0 at position 40
+            // 1. Artist Affinity (Session) - Weight: 20
+            let artistScore = 0;
+            trackArtists.forEach(a => {
+                if (a !== 'Unknown Artist') {
+                    artistScore += (sessionAffinity.artists[a] || 0) * 10;
+                }
+            });
+            score += Math.min(20, artistScore);
+
+            // 2. Genre Synergy (The Mood Guard) - Weight: 40
+            let genreScore = 0;
+            trackGenres.forEach(g => {
+                genreScore += (sessionAffinity.genres[g] || 0) * 20;
+            });
+            score += Math.min(40, genreScore);
+
+            // 3. Global Preference (Likes) - Weight: 20
+            if (likedTracks.has(track.url)) {
+                score += 20;
+            }
+
+            // 4. Discovery Nudge - Weight: 15
+            const hasPlayedBefore = historyTracks.some(h => h.url === track.url);
+            if (!hasPlayedBefore) {
+                score += 15;
+            }
+
+            // 5. Era Proximity - Weight: 5
+            if (currentYear && year) {
+                score += Math.max(0, 5 - Math.abs(currentYear - year));
+            }
+
+            // 6. Diversity Nudge (Artist Exhaustion)
+            // -30 if in last 3, -10 if in last 10
+            const recentHistory = sessionHistory.slice(-10);
+            const lastThree = recentHistory.slice(-3);
+            
+            if (lastThree.some(url => {
+                const t = allTracks.find(x => x.url === url);
+                const tArtists = splitArtists(t?.metadata?.artist || '');
+                return tArtists.some(a => trackArtists.includes(a));
+            })) {
+                score -= 30;
+            } else if (recentHistory.some(url => {
+                const t = allTracks.find(x => x.url === url);
+                const tArtists = splitArtists(t?.metadata?.artist || '');
+                return tArtists.some(a => trackArtists.includes(a));
+            })) {
+                score -= 10;
+            }
+
+            // 7. Recency Penalty (Same Song)
             const histPos = sessionHistory.lastIndexOf(track.url);
             if (histPos !== -1) {
                 const distFromEnd = sessionHistory.length - 1 - histPos;
-                score -= 50 * Math.exp(-distFromEnd / 10);
+                score -= 100 * Math.exp(-distFromEnd / 10);
             }
-            // Diversity nudge — penalise same artist if in last 3 plays
-            const recentThree = sessionHistory.slice(-3);
-            if (recentThree.some(url => allTracks.find(x => x.url === url)?.metadata?.artist === artist)) {
-                score -= 20;
-            }
-            // Random noise (0-15 pts) — prevents deterministic loops
-            score += Math.random() * 15;
+
+            // 8. Random Noise - Weight: 10
+            score += Math.random() * 10;
 
             return { track, score };
         });
 
-        // Shift scores so all weights are positive, then weighted-random pick
+        // Normalize for weighted selection across ALL candidates
         const minScore = Math.min(...scored.map(s => s.score));
-        const weighted = scored.map(s => ({ track: s.track, w: Math.max(0.1, s.score - minScore + 0.1) }));
+        const weighted = scored.map(s => ({ track: s.track, w: Math.max(0.1, s.score - minScore + 1) }));
         const total = weighted.reduce((sum, s) => sum + s.w, 0);
         let rand = Math.random() * total;
         for (const s of weighted) {
             rand -= s.w;
             if (rand <= 0) return s.track;
         }
-        return weighted[weighted.length - 1].track;
+        return scored[0].track;
     }
 
     function _scheduleRecommendation(currentTrack) {
@@ -2240,7 +2292,7 @@ function openEditAlbumModal(albumInfo) {
         if (index < 0 || index >= currentPlaylistContext.length) return;
 
         currentTrackIndex = index;
-        
+
         // Sync shuffle pointer if active
         if (isShuffleActive && shuffledIndices.length > 0) {
             const pos = shuffledIndices.indexOf(index);
@@ -2317,10 +2369,10 @@ function openEditAlbumModal(albumInfo) {
             } else if (pendingRecommendedTrack) {
                 const rec = pendingRecommendedTrack;
                 pendingRecommendedTrack = null;
-                        currentPlaylistContext = [rec];
-                        shuffledIndices = [];
-                        currentShufflePointer = -1;
-                        commitTrackChange(0);
+                currentPlaylistContext = [rec];
+                shuffledIndices = [];
+                currentShufflePointer = -1;
+                commitTrackChange(0);
             } else {
                 audioPlayer.pause();
             }
@@ -2602,13 +2654,13 @@ function openEditAlbumModal(albumInfo) {
     // Settings Listeners (Playback & Audio)
     const crossfadeSlider = document.getElementById('setting-crossfade-duration');
     const crossfadeValue = document.getElementById('setting-crossfade-value');
-    
+
     if (crossfadeSlider) {
         // Initialize from persistent storage or default
         const initialSecs = CROSSFADE_DURATION / 1000;
         crossfadeSlider.value = initialSecs;
         crossfadeValue.textContent = initialSecs + 's';
-        
+
         crossfadeSlider.addEventListener('input', (e) => {
             const secs = parseInt(e.target.value);
             CROSSFADE_DURATION = secs * 1000;
@@ -2765,7 +2817,7 @@ function openEditAlbumModal(albumInfo) {
     function switchToHistoryView(push = true) {
         if (push) navigateTo('history');
         hideOverlays();
-        
+
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         searchView.classList.remove('active'); searchView.classList.add('hidden');
         albumView.classList.remove('active'); albumView.classList.add('hidden');
@@ -2775,7 +2827,7 @@ function openEditAlbumModal(albumInfo) {
         const gdv1 = document.getElementById('downloads-view'); if (gdv1) { gdv1.classList.remove('active'); gdv1.classList.add('hidden'); }
         const gsv1 = document.getElementById('stats-view'); if (gsv1) { gsv1.classList.remove('active'); gsv1.classList.add('hidden'); }
         const gpv1 = document.getElementById('profile-view'); if (gpv1) { gpv1.classList.remove('active'); gpv1.classList.add('hidden'); }
-        
+
         const historyView = document.getElementById('history-view');
         if (historyView) {
             historyView.classList.remove('hidden');
@@ -2787,7 +2839,7 @@ function openEditAlbumModal(albumInfo) {
     function switchToLikesView(push = true) {
         if (push) navigateTo('likes');
         hideOverlays();
-        
+
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         searchView.classList.remove('active'); searchView.classList.add('hidden');
         albumView.classList.remove('active'); albumView.classList.add('hidden');
@@ -2797,7 +2849,7 @@ function openEditAlbumModal(albumInfo) {
         const gdv1 = document.getElementById('downloads-view'); if (gdv1) { gdv1.classList.remove('active'); gdv1.classList.add('hidden'); }
         const gsv1 = document.getElementById('stats-view'); if (gsv1) { gsv1.classList.remove('active'); gsv1.classList.add('hidden'); }
         const gpv1 = document.getElementById('profile-view'); if (gpv1) { gpv1.classList.remove('active'); gpv1.classList.add('hidden'); }
-        
+
         const likesView = document.getElementById('likes-view');
         if (likesView) {
             likesView.classList.remove('hidden');
@@ -2808,7 +2860,7 @@ function openEditAlbumModal(albumInfo) {
     function switchToDownloadsView(push = true) {
         if (push) navigateTo('downloads');
         hideOverlays();
-        
+
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         searchView.classList.remove('active'); searchView.classList.add('hidden');
         albumView.classList.remove('active'); albumView.classList.add('hidden');
@@ -2818,7 +2870,7 @@ function openEditAlbumModal(albumInfo) {
         const ghv1 = document.getElementById('history-view'); if (ghv1) { ghv1.classList.remove('active'); ghv1.classList.add('hidden'); }
         const gsv1 = document.getElementById('stats-view'); if (gsv1) { gsv1.classList.remove('active'); gsv1.classList.add('hidden'); }
         const gpv1 = document.getElementById('profile-view'); if (gpv1) { gpv1.classList.remove('active'); gpv1.classList.add('hidden'); }
-        
+
         const downloadsView = document.getElementById('downloads-view');
         if (downloadsView) {
             downloadsView.classList.remove('hidden');
@@ -2896,7 +2948,7 @@ function openEditAlbumModal(albumInfo) {
     function switchToStatsView(push = true) {
         if (push) navigateTo('stats');
         hideOverlays();
-        
+
         homeView.classList.remove('active'); homeView.classList.add('hidden');
         searchView.classList.remove('active'); searchView.classList.add('hidden');
         albumView.classList.remove('active'); albumView.classList.add('hidden');
@@ -2906,7 +2958,7 @@ function openEditAlbumModal(albumInfo) {
         const ghv6 = document.getElementById('history-view'); if (ghv6) { ghv6.classList.remove('active'); ghv6.classList.add('hidden'); }
         const gdv6 = document.getElementById('downloads-view'); if (gdv6) { gdv6.classList.remove('active'); gdv6.classList.add('hidden'); }
         const gpv6 = document.getElementById('profile-view'); if (gpv6) { gpv6.classList.remove('active'); gpv6.classList.add('hidden'); }
-        
+
         const statsView = document.getElementById('stats-view');
         if (statsView) {
             statsView.classList.remove('hidden');
@@ -2930,7 +2982,7 @@ function openEditAlbumModal(albumInfo) {
         const availableWidth = (window.innerWidth / scale) - padding;
         // Use ceil and add 1 to ensure we always overflow slightly into the right-side fade mask
         const count = Math.ceil((availableWidth + gap) / (itemWidth + gap)) + 1;
-        return Math.max(8, count); 
+        return Math.max(8, count);
     }
 
     // Refresh home grid on resize to adjust item counts
@@ -3113,8 +3165,8 @@ function openEditAlbumModal(albumInfo) {
 
     // Custom Genre Dropdown Logic
     const DEFAULT_GENRES = [
-        "Acoustic", "Alternative", "Ambient", "Blues", "Classical", "Country", "Dance", 
-        "Electronic", "Folk", "Hip-Hop", "Indie", "Jazz", "Latin", "Lo-Fi", "Metal", 
+        "Acoustic", "Alternative", "Ambient", "Blues", "Classical", "Country", "Dance",
+        "Electronic", "Folk", "Hip-Hop", "Indie", "Jazz", "Latin", "Lo-Fi", "Metal",
         "Pop", "R&B", "Rock", "Soul", "Soundtrack", "Trap"
     ];
 
@@ -3122,7 +3174,7 @@ function openEditAlbumModal(albumInfo) {
         if (!metadataGenreDropdown) return;
         metadataGenreDropdown.innerHTML = '';
         const lowerFilter = filter.toLowerCase();
-        
+
         let options = [...DEFAULT_GENRES];
         const currentVal = metadataGenreInput.value.trim();
         if (currentVal && !options.some(o => o.toLowerCase() === currentVal.toLowerCase())) {
@@ -3667,11 +3719,11 @@ function openEditAlbumModal(albumInfo) {
         const yearStr = earliestYear === 9999 ? 'Unknown Year' : earliestYear;
         const durationStr = totalDuration > 0 ? `, ${formatHeroDuration(totalDuration)}` : '';
         const songCountStr = `${albumInfo.tracks.length} song${albumInfo.tracks.length !== 1 ? 's' : ''}`;
-        
+
         let genresHtml = '';
         if (albumGenres.size > 0) {
             // Removed .slice(0, 3) to show all genres in the album banner
-            genresHtml = Array.from(albumGenres).map(g => 
+            genresHtml = Array.from(albumGenres).map(g =>
                 `<span style="background: rgba(255,255,255,0.1); color: var(--text-secondary); padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px; border: 1px solid rgba(255,255,255,0.05); text-transform: uppercase; letter-spacing: 0.5px;">${g}</span>`
             ).join('');
         } else {
@@ -4447,14 +4499,14 @@ function openEditAlbumModal(albumInfo) {
     // ── Playlist System ───────────────────────────────────────────────────────
 
     // ── History System ────────────────────────────────────────────────────────
-    
+
     async function fetchHistory() {
         if (currentUser && window._fbFS) {
             try {
                 const snap = await window._fbFS.collection('users').doc(currentUser.uid).collection('history')
                     .orderBy('timestamp', 'desc').limit(100).get();
                 const cloudTracks = snap.docs.map(doc => doc.data());
-                
+
                 // Hydrate cloud tracks with library data to ensure quality tags and relative paths are present
                 historyTracks = cloudTracks.map(track => {
                     const libTrack = allTracks.find(t => t.url === track.url);
@@ -4468,7 +4520,7 @@ function openEditAlbumModal(albumInfo) {
             const local = localStorage.getItem('SimonRelays_History');
             historyTracks = local ? JSON.parse(local) : [];
         }
-        
+
         // Refresh history view if open
         const historyView = document.getElementById('history-view');
         if (historyView && !historyView.classList.contains('hidden')) {
@@ -4478,7 +4530,7 @@ function openEditAlbumModal(albumInfo) {
 
     async function addToHistory(track) {
         if (!track) return;
-        
+
         const historyData = {
             ...track,
             timestamp: Date.now()
@@ -4533,7 +4585,7 @@ function openEditAlbumModal(albumInfo) {
                     isLocal: true, // Mark as local since it's from IDB
                     savedAt: item.savedAt
                 };
-                
+
                 // Hydrate with library data to ensure quality tags and relative paths are present
                 const libTrack = allTracks.find(t => t.url === item.trackUrl);
                 if (libTrack) {
@@ -4542,15 +4594,15 @@ function openEditAlbumModal(albumInfo) {
                     track.isLocal = true;
                     track.savedAt = item.savedAt;
                 }
-                
+
                 // Restore relativePath specifically if saved in metadata (new downloads)
                 if (item.metadata && item.metadata.relativePath) {
                     track.relativePath = item.metadata.relativePath;
                 }
-                
+
                 return track;
             }).sort((a, b) => b.savedAt - a.savedAt); // Newest first
-            
+
             // Update storage info display
             const storageText = document.getElementById('downloads-storage-text');
             if (storageText) {
@@ -4588,15 +4640,15 @@ function openEditAlbumModal(albumInfo) {
             const snap = await window._fbFS.collection('users').doc(currentUser.uid).collection('likes').orderBy('timestamp', 'desc').get();
             likedTracks.clear();
             allLikedTracksCache = [];
-            
+
             snap.forEach(doc => {
                 const data = doc.data();
                 likedTracks.add(data.url);
                 allLikedTracksCache.push(data);
             });
-            
+
             updateLikeButtonState();
-            
+
             // If likes view is currently open, refresh it
             const likesView = document.getElementById('likes-view');
             if (likesView && !likesView.classList.contains('hidden')) {
@@ -4610,14 +4662,14 @@ function openEditAlbumModal(albumInfo) {
     async function toggleLike(trackToToggle = null) {
         const track = trackToToggle || globalPlayingTrack;
         if (!currentUser || !window._fbFS || !track) return;
-        
+
         const trackUrl = track.url;
         // Firebase paths cannot contain ".", so we encode the URL
         const safeUrlId = encodeURIComponent(trackUrl).replace(/\./g, '%2E');
         const likeRef = window._fbFS.collection('users').doc(currentUser.uid).collection('likes').doc(safeUrlId);
-        
+
         const isLiked = likedTracks.has(trackUrl);
-        
+
         try {
             if (isLiked) {
                 likedTracks.delete(trackUrl);
@@ -4626,7 +4678,7 @@ function openEditAlbumModal(albumInfo) {
                 await likeRef.delete();
             } else {
                 likedTracks.add(trackUrl);
-                
+
                 const trackData = {
                     ...track,
                     timestamp: Date.now()
@@ -4635,13 +4687,13 @@ function openEditAlbumModal(albumInfo) {
                 updateLikeButtonState();
                 await likeRef.set(trackData);
             }
-            
+
             // If likes view is currently open, refresh it
             const likesView = document.getElementById('likes-view');
             if (likesView && !likesView.classList.contains('hidden')) {
                 renderLikesView();
             }
-            
+
         } catch (error) {
             console.error('[Likes] Failed to toggle like', error);
             // Revert state on failure
@@ -4653,9 +4705,9 @@ function openEditAlbumModal(albumInfo) {
     function updateLikeButtonState() {
         const likeTrackBtn = document.getElementById('like-track-btn');
         const immersiveLikeBtn = document.getElementById('immersive-like-btn');
-        
+
         const isLiked = currentUser && globalPlayingTrack && likedTracks.has(globalPlayingTrack.url);
-        
+
         if (likeTrackBtn) {
             if (!currentUser || !globalPlayingTrack) {
                 likeTrackBtn.classList.remove('active');
@@ -4663,7 +4715,7 @@ function openEditAlbumModal(albumInfo) {
                 likeTrackBtn.classList.toggle('active', isLiked);
             }
         }
-        
+
         if (immersiveLikeBtn) {
             if (!currentUser || !globalPlayingTrack) {
                 immersiveLikeBtn.style.display = 'none';
@@ -4678,13 +4730,13 @@ function openEditAlbumModal(albumInfo) {
             }
         }
     }
-    
+
     function renderLikesView() {
         const container = document.getElementById('likes-track-list');
         if (!container) return;
-        
+
         container.innerHTML = '';
-        
+
         if (allLikedTracksCache.length === 0) {
             container.innerHTML = `
                 <div class="search-empty-state">
@@ -4697,7 +4749,7 @@ function openEditAlbumModal(albumInfo) {
             `;
             return;
         }
-        
+
         // Use standard renderer for track lists to retain cover art, context menus, and proper layout
         renderTrackList(allLikedTracksCache, container, false, null, false, true);
     }
@@ -4738,14 +4790,14 @@ function openEditAlbumModal(albumInfo) {
                     <div class="stats-label">Hi-Res Tracks</div>
                 </div>
             `;
-            
+
             // Add format breakdown if available
             if (stats.formats) {
                 const formatList = Object.entries(stats.formats)
                     .sort((a, b) => b[1] - a[1])
                     .map(([fmt, count]) => `<li style="display: flex; justify-content: space-between;"><span>${fmt}</span> <span style="color: var(--accent); font-weight: 700;">${count}</span></li>`)
                     .join('');
-                
+
                 const formatCard = document.createElement('div');
                 formatCard.className = 'stats-card';
                 formatCard.innerHTML = `
@@ -5078,7 +5130,7 @@ function openEditAlbumModal(albumInfo) {
                     <div class="playlist-card-title" title="${pl.name}">${pl.name}</div>
                     <div class="playlist-card-label">${pl.tracks.length} track${pl.tracks.length !== 1 ? 's' : ''}</div>
                 `;
-                
+
                 card.querySelector('.card-play-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
                     if (pl.tracks.length === 0) return;
@@ -5452,10 +5504,10 @@ function openEditAlbumModal(albumInfo) {
 
 
     function getTrackUrlForQuality(track, type = 'stream') {
-        const qualityPref = type === 'stream' 
+        const qualityPref = type === 'stream'
             ? (localStorage.getItem('streamQuality') || 'original')
             : (localStorage.getItem('downloadQuality') || 'original');
-            
+
         if (track.qualities && track.qualities[qualityPref]) {
             // track.qualities urls are already absolute paths or /api paths relative to serverBaseUrl
             const qualityUrl = track.qualities[qualityPref].url;
@@ -5465,10 +5517,10 @@ function openEditAlbumModal(albumInfo) {
     }
 
     function getPlaybackFormat(track, type = 'stream') {
-        const qualityPref = type === 'stream' 
+        const qualityPref = type === 'stream'
             ? (localStorage.getItem('streamQuality') || 'original')
             : (localStorage.getItem('downloadQuality') || 'original');
-            
+
         if (track.qualities && track.qualities[qualityPref]) {
             const rawFormat = track.qualities[qualityPref].format;
             if (rawFormat) {
@@ -5532,7 +5584,7 @@ function openEditAlbumModal(albumInfo) {
                 bottomOfflineBtn.title = 'Remote Source';
             }
         }
-        
+
         updateLikeButtonState();
 
         bottomTitle.textContent = title;
@@ -5618,7 +5670,7 @@ function openEditAlbumModal(albumInfo) {
         fetchLyrics(title, artist, album, duration, track._cachedLyrics);
 
         updateMediaSession(track);
-        
+
         // Restore standard src property so UI checks pass
         audioPlayer.src = fullAudioUrl;
 
@@ -5626,7 +5678,7 @@ function openEditAlbumModal(albumInfo) {
         crossfadeTimeout = false;
 
         const url = fullAudioUrl;
-        
+
         if (nextHowl && nextTrackData && nextTrackData.url === track.url) {
             console.log('[Audio] Using preloaded track:', title);
             const oldHowl = currentHowl;
@@ -5650,7 +5702,7 @@ function openEditAlbumModal(albumInfo) {
             currentHowl.off('load').on('load', () => audioPlayer._trigger('loadedmetadata'));
 
             currentHowl.play();
-            
+
             // Manual trigger in case it was already loaded
             audioPlayer._trigger('loadedmetadata');
         } else {
@@ -5718,7 +5770,7 @@ function openEditAlbumModal(albumInfo) {
         if (!next || (nextTrackData && nextTrackData.url === next.url)) return;
 
         console.log('[Audio] Preloading next track:', next.filename);
-        
+
         const isDownloaded = downloadedTracksMap.has(next.url);
         let url = getTrackUrlForQuality(next, 'stream');
 
@@ -5728,7 +5780,7 @@ function openEditAlbumModal(albumInfo) {
                 if (saved && saved.blob) {
                     url = URL.createObjectURL(saved.blob);
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
 
         if (nextHowl) nextHowl.unload();
@@ -5824,11 +5876,11 @@ function openEditAlbumModal(albumInfo) {
                 const artist = (track.metadata && track.metadata.artist) ? track.metadata.artist : 'Unknown Artist';
                 const album = (track.metadata && track.metadata.album) ? track.metadata.album : '';
                 const duration = (track.metadata && track.metadata.duration) ? track.metadata.duration : 0;
-                
+
                 let lUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(title)}&artist_name=${encodeURIComponent(artist)}`;
                 if (album) lUrl += `&album_name=${encodeURIComponent(album)}`;
                 if (duration) lUrl += `&duration=${Math.round(duration)}`;
-                
+
                 const lRes = await fetch(lUrl);
                 if (lRes.ok) lyrics = await lRes.json();
             } catch (e) { console.error('[PWA] Lyrics download failed', e); }
@@ -6040,7 +6092,7 @@ function openEditAlbumModal(albumInfo) {
     const desktopSidebarToggle = document.getElementById('desktop-sidebar-toggle');
     const desktopSidebar = document.getElementById('desktop-sidebar');
     const sidebarOverlay = document.getElementById('sidebar-overlay');
-    
+
     if (desktopSidebarToggle && desktopSidebar && sidebarOverlay) {
         desktopSidebarToggle.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -6051,8 +6103,8 @@ function openEditAlbumModal(albumInfo) {
 
         // Close sidebar if clicking outside
         document.addEventListener('click', (e) => {
-            if (desktopSidebar.classList.contains('active') && 
-                !desktopSidebar.contains(e.target) && 
+            if (desktopSidebar.classList.contains('active') &&
+                !desktopSidebar.contains(e.target) &&
                 e.target !== desktopSidebarToggle &&
                 !desktopSidebarToggle.contains(e.target)) {
                 closeSidebar();
