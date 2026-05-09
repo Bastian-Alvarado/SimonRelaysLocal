@@ -609,7 +609,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Infinite Play State ───────────────────────────────────────────────────
     let sessionHistory = [];   // up to 50 recently played URLs
     let sessionAffinity = { artists: {}, genres: {} };
-    let pendingRecommendedTrack = null; // pre-computed next pick
     // ─────────────────────────────────────────────────────────────────────────
     let pendingUploads = new Set();  // url
     let currentActiveBlobUrl = null;
@@ -2181,7 +2180,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return getNextPlayableIndex(currentTrackIndex + 1, 1, true) === -1;
     }
 
-    function _pickRecommendedTrack(currentTrack) {
+    function _pickRecommendedTrack(currentTrack, virtualHistory = null) {
         if (!allTracks || allTracks.length === 0) return null;
         const currentYear = parseInt(currentTrack?.metadata?.year) || 0;
 
@@ -2189,6 +2188,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             !isTrackUnsupported(t) && t.url !== currentTrack?.url
         );
         if (candidates.length === 0) return null;
+
+        const historyToUse = virtualHistory || sessionHistory;
 
         const scored = candidates.map(track => {
             const trackArtists = splitArtists(track.metadata?.artist || '');
@@ -2231,7 +2232,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // 6. Diversity Nudge (Artist Exhaustion)
             // -30 if in last 3, -10 if in last 10
-            const recentHistory = sessionHistory.slice(-10);
+            const recentHistory = historyToUse.slice(-10);
             const lastThree = recentHistory.slice(-3);
             
             if (lastThree.some(url => {
@@ -2249,9 +2250,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             // 7. Recency Penalty (Same Song)
-            const histPos = sessionHistory.lastIndexOf(track.url);
+            const histPos = historyToUse.lastIndexOf(track.url);
             if (histPos !== -1) {
-                const distFromEnd = sessionHistory.length - 1 - histPos;
+                const distFromEnd = historyToUse.length - 1 - histPos;
                 score -= 100 * Math.exp(-distFromEnd / 10);
             }
 
@@ -2273,16 +2274,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         return scored[0].track;
     }
 
-    function _scheduleRecommendation(currentTrack) {
-        pendingRecommendedTrack = null;
-        setTimeout(() => {
-            const pick = _pickRecommendedTrack(currentTrack);
+    function _fillInfiniteBuffer() {
+        if (repeatMode !== 0 || !allTracks || allTracks.length === 0) return;
+
+        const remaining = currentPlaylistContext.length - 1 - currentTrackIndex;
+        if (remaining >= 10) return;
+
+        const needed = 10 - remaining;
+        let lastTrack = currentPlaylistContext[currentPlaylistContext.length - 1] || null;
+        
+        // Use a virtual history to ensure the 10-track batch is diverse
+        let tempHistory = [...sessionHistory];
+        // Add existing unplayed context to temp history
+        if (currentTrackIndex !== -1) {
+            currentPlaylistContext.slice(currentTrackIndex + 1).forEach(t => tempHistory.push(t.url));
+        }
+
+        let addedAny = false;
+        for (let i = 0; i < needed; i++) {
+            const pick = _pickRecommendedTrack(lastTrack, tempHistory);
             if (pick) {
-                pendingRecommendedTrack = pick;
-                console.log('[InfinitePlay] Ready:', pick.metadata?.title || pick.filename);
-                updateImmersiveUpNext();
+                currentPlaylistContext.push(pick);
+                tempHistory.push(pick.url);
+                lastTrack = pick;
+                addedAny = true;
+            } else {
+                break;
             }
-        }, 0);
+        }
+
+        if (addedAny) {
+            if (queueView && queueView.classList.contains('active')) renderQueueView();
+            updateImmersiveUpNext();
+        }
     }
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -2315,11 +2339,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         playTrack(track, title, artist);
 
-        // Infinite Play: track session history + affinity, pre-compute rec if last track
+        // Infinite Play: track session history + affinity, refill rolling buffer
         sessionHistory.push(track.url);
         if (sessionHistory.length > 50) sessionHistory.shift();
         _updateSessionAffinity(track);
-        if (_isLastTrackInContext()) _scheduleRecommendation(track);
+        _fillInfiniteBuffer();
 
         // Keep the queue panel in sync with the new context
         if (queueView && queueView.classList.contains('active')) {
@@ -2345,15 +2369,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isShuffleActive) {
             if (currentShufflePointer >= shuffledIndices.length - 1) {
                 if (repeatMode === 0) {
-                    if (pendingRecommendedTrack) {
-                        const rec = pendingRecommendedTrack;
-                        pendingRecommendedTrack = null;
-                        currentPlaylistContext = [rec];
-                        shuffledIndices = [];
-                        commitTrackChange(0);
-                    } else {
-                        audioPlayer.pause();
-                    }
+                    audioPlayer.pause();
                     return;
                 }
                 generateShuffleQueue();
@@ -2366,13 +2382,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const nextIdx = getNextPlayableIndex(currentTrackIndex + 1, 1, isAutoEnded);
             if (nextIdx !== -1) {
                 commitTrackChange(nextIdx);
-            } else if (pendingRecommendedTrack) {
-                const rec = pendingRecommendedTrack;
-                pendingRecommendedTrack = null;
-                currentPlaylistContext = [rec];
-                shuffledIndices = [];
-                currentShufflePointer = -1;
-                commitTrackChange(0);
             } else {
                 audioPlayer.pause();
             }
@@ -5762,7 +5771,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const nextIdx = getNextPlayableIndex(currentTrackIndex + 1, 1, true);
             if (nextIdx !== -1) return currentPlaylistContext[nextIdx];
         }
-        return pendingRecommendedTrack;
+        return null;
     }
 
     async function preloadNextTrack() {
