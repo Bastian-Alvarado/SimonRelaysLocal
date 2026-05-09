@@ -5640,14 +5640,16 @@ function openEditAlbumModal(albumInfo) {
                 fadeHowl(oldHowl, 0, CROSSFADE_DURATION, () => oldHowl.unload());
             }
 
-            // Ensure preloaded track has correct triggers connected
-            currentHowl.off('play').on('play', () => audioPlayer._trigger('play'));
+            currentHowl.off('play').on('play', () => {
+                audioPlayer._trigger('play');
+                // Ensure fade-in starts from 0 once playback actually begins
+                currentHowl.volume(0);
+                fadeHowl(currentHowl, lastVolume || 0.7, CROSSFADE_DURATION);
+            });
             currentHowl.off('pause').on('pause', () => audioPlayer._trigger('pause'));
             currentHowl.off('load').on('load', () => audioPlayer._trigger('loadedmetadata'));
 
-            currentHowl.volume(0);
             currentHowl.play();
-            fadeHowl(currentHowl, lastVolume || 0.7, CROSSFADE_DURATION);
             
             // Manual trigger in case it was already loaded
             audioPlayer._trigger('loadedmetadata');
@@ -5669,7 +5671,12 @@ function openEditAlbumModal(albumInfo) {
                 format: format ? [format] : undefined,
                 html5: true, // Enable HTML5 mode for progressive streaming
                 autoplay: false,
-                onplay: () => audioPlayer._trigger('play'),
+                onplay: () => {
+                    audioPlayer._trigger('play');
+                    // Start fade in once it actually starts playing
+                    currentHowl.volume(0);
+                    fadeHowl(currentHowl, lastVolume || 0.7, CROSSFADE_DURATION);
+                },
                 onpause: () => audioPlayer._trigger('pause'),
                 onend: () => {
                     if (repeatMode === 2) {
@@ -5684,7 +5691,6 @@ function openEditAlbumModal(albumInfo) {
                     console.error('[Audio] Howl load error:', err, 'URL:', url, 'Format:', format);
                 }
             });
-            currentHowl.volume(lastVolume || 0.7);
             currentHowl.play();
         }
 
