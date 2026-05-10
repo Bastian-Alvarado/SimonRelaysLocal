@@ -31,8 +31,13 @@ self.addEventListener('fetch', (e) => {
     // We only handle GET requests for PWA standard caching
     if (e.request.method !== 'GET') return;
     
-    // Ignore external APIs like Deezer or strictly local audio streams dynamically
-    if (e.request.url.includes('/api/') || e.request.url.includes('api.deezer.com')) {
+    // Ignore Range requests (streaming), audio/video destinations, external APIs, or audio directory
+    if (e.request.headers.has('range') || 
+        e.request.destination === 'audio' || 
+        e.request.destination === 'video' ||
+        e.request.url.includes('/api/') || 
+        e.request.url.includes('/audio/') || 
+        e.request.url.includes('api.deezer.com')) {
         return;
     }
 

@@ -3877,6 +3877,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return track;
         });
 
+        const fragment = document.createDocumentFragment();
         tracksToRender.forEach((track, index) => {
             const trackItem = document.createElement('div');
             trackItem.className = 'track-item';
@@ -4148,8 +4149,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
 
-            container.appendChild(trackItem);
+            fragment.appendChild(trackItem);
         });
+        container.appendChild(fragment);
     }
 
     function openArtistView(artistName, push = true) {
