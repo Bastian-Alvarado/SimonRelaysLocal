@@ -17,6 +17,7 @@
     <script src="js/audio.js"></script>
     <script src="js/search.js"></script>
     <script src="js/lyrics.js"></script>
+    <script src="js/theme.js"></script>
 </head>
 <body>
     <div id="app-root">
@@ -90,6 +91,12 @@
                     <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
                 <span>Downloads</span>
+            </li>
+            <li class="sidebar-item" id="sidebar-themes-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+                </svg>
+                <span>Themes</span>
             </li>
             <li class="sidebar-item" id="sidebar-history-btn">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -278,9 +285,55 @@
         <div id="likes-view" class="view hidden">
             <div class="view-header" style="padding-top: 40px; padding-bottom: 20px;">
                 <h1 class="view-title" style="font-size: 48px; margin-bottom: 8px;">Liked Tracks</h1>
-                <p style="color: var(--text-secondary); font-size: 14px;">Songs you've loved</p>
             </div>
-            <div id="likes-track-list" class="track-list" style="padding: 0 40px 100px;"></div>
+            <div id="likes-track-list-container">
+                <div class="track-list" id="likes-track-list"></div>
+            </div>
+        </div>
+
+        <div id="themes-view" class="view hidden">
+            <div class="view-header" style="padding-top: 40px; padding-bottom: 20px;">
+                <h1 class="view-title" style="font-size: 48px; margin-bottom: 8px;">Themes</h1>
+                <p class="view-subtitle">Personalize your listening experience</p>
+            </div>
+            
+            <div class="themes-grid">
+                <!-- Simon Default Card -->
+                <div class="theme-card theme-selection-card" id="theme-simon-default" style="padding: 16px; border-radius: 16px; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(20px);">
+                    <div style="width: 100%; height: 100px; background: #f43f5e; border-radius: 10px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 16px rgba(244, 63, 94, 0.4); position: relative; overflow: hidden;">
+                         <span style="font-weight: 900; font-size: 20px; color: white; text-shadow: 0 4px 8px rgba(0,0,0,0.4); z-index: 2;">Simon Default</span>
+                         <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, transparent 100%);"></div>
+                    </div>
+                    <h3 style="font-size: 16px; font-weight: 800; margin-bottom: 4px;">Classic Look</h3>
+                    <p style="opacity: 0.6; font-size: 12px; line-height: 1.4;">The signature SimonRelays aesthetic with fixed rose-red accents.</p>
+                </div>
+
+                <!-- RGB Card -->
+                <div class="theme-card theme-selection-card" id="theme-rgb" style="padding: 16px; border-radius: 16px; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(20px);">
+                    <div class="rgb-preview" style="width: 100%; height: 100px; background: linear-gradient(45deg, #ff0000, #00ff00, #0000ff); border-radius: 10px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; box-shadow: 0 8px 16px rgba(0,0,0,0.4);">
+                         <div style="position: absolute; width: 100%; height: 100%; background: url('https://www.transparenttextures.com/patterns/cubes.png'); opacity: 0.2;"></div>
+                         <span style="font-weight: 900; font-size: 20px; color: white; position: relative; z-index: 2; text-shadow: 0 4px 8px rgba(0,0,0,0.4);">RGB Dynamic</span>
+                         <div style="position: absolute; width: 100%; height: 100%; background: radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.3) 100%);"></div>
+                    </div>
+                    <h3 style="font-size: 16px; font-weight: 800; margin-bottom: 4px;">Reactive Engine</h3>
+                    <p style="opacity: 0.6; font-size: 12px; line-height: 1.4;">Full-app reactive lighting that shifts dynamically with your music.</p>
+                </div>
+            </div>
+
+            <div class="visual-settings" style="margin-top: 40px; padding: 32px; background: var(--surface-color); border-radius: 20px; border: 1px solid var(--surface-border); backdrop-filter: blur(10px);">
+                <h2 style="margin-bottom: 24px; font-weight: 800;">Visual Preferences</h2>
+                
+                <div class="setting-item" style="margin-bottom: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div>
+                            <h4 style="margin: 0;">Application Zoom</h4>
+                            <p style="font-size: 12px; opacity: 0.6; margin-top: 4px;">Adjust the size of the user interface.</p>
+                        </div>
+                        <span id="zoom-value-label" style="font-weight: 700; font-size: 18px; color: var(--accent);">100%</span>
+                    </div>
+                    <input type="range" id="theme-zoom-slider" min="50" max="150" value="100" class="premium-slider" style="width: 100%; height: 6px; border-radius: 3px; -webkit-appearance: none; background: rgba(255,255,255,0.1); cursor: pointer;">
+                </div>
+            </div>
         </div>
 
         <!-- Album View -->
@@ -347,7 +400,8 @@
         <!-- Immersive View -->
         <div id="immersive-view" class="immersive-overlay hidden">
             <div class="immersive-bg-wrapper">
-                <img id="immersive-bg" src="" alt="">
+                <img id="immersive-bg" src="" alt="" class="immersive-bg-layer">
+                <img id="immersive-bg-alt" src="" alt="" class="immersive-bg-layer alt">
                 <div class="immersive-bg-dimmer"></div>
             </div>
 

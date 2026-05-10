@@ -43,17 +43,6 @@ function getSharedCoverUrl(relativePath, artist, album) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // Apply saved zoom level using CSS variable for transform scaling
-    const savedZoom = localStorage.getItem('zoomLevel') || '100';
-    const zoomScale = parseFloat(savedZoom) / 100;
-    document.documentElement.style.setProperty('--app-zoom', zoomScale);
-    // Explicitly reset native zoom to prevent interference
-    document.documentElement.style.zoom = '1';
-
-    function getZoomScale() {
-        // Retrieve scale from CSS variable
-        return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-zoom')) || 1;
-    }
 
     // Views
     const homeView = document.getElementById('home-view');
@@ -354,112 +343,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (maxBtn) maxBtn.style.display = 'none';
     if (closeBtn) closeBtn.style.display = 'none';
 
-    // ── Dynamic Color Logic ──────────────────────────────────────────────────
-    async function updatePlayerBarDynamicColor(imgUrl) {
-        if (!imgUrl || window.innerWidth > 768) return;
-
-        const playerBar = document.querySelector('.player-bar');
-        if (!playerBar) return;
-
-        // If it's a relative URL (server source), make it absolute for the Image object
-        const absoluteImageUrl = (imgUrl.startsWith('/') && !imgUrl.startsWith('//'))
-            ? `${serverBaseUrl}${imgUrl}`
-            : imgUrl;
-
-        const img = new Image();
-        img.crossOrigin = "Anonymous";
-        img.src = absoluteImageUrl;
-
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = 1; canvas.height = 1;
-
-            ctx.drawImage(img, 0, 0, 1, 1);
-            const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-
-            // Apply subtle tint (slightly darken and desaturate for UI overlay look)
-            const dimR = Math.floor(r * 0.7);
-            const dimG = Math.floor(g * 0.7);
-            const dimB = Math.floor(b * 0.7);
-
-            playerBar.style.setProperty('--player-dynamic-rgb', `${dimR}, ${dimG}, ${dimB}`);
-            playerBar.style.setProperty('--player-dynamic-bg', `rgba(${dimR}, ${dimG}, ${dimB}, 0.75)`);
-            // More solid version for the progress fill
-            playerBar.style.setProperty('--player-dynamic-fill', `rgba(${r}, ${g}, ${b}, 0.85)`);
-        };
-    }
-
-    const artistImageCache = {};
-
-    async function fetchAndApplyArtistImage(artistName, elementNode, useXL = false) {
-        if (!artistName || artistName === 'Unknown Artist') return;
-
-        let targetEl = null;
-        if (elementNode.classList && elementNode.classList.contains('artist-card-art')) {
-            targetEl = elementNode;
-        } else if (elementNode.classList && elementNode.classList.contains('artist-hero-avatar')) {
-            targetEl = elementNode;
-        } else if (elementNode.classList && elementNode.classList.contains('artist-avatar')) {
-            targetEl = elementNode;
-        } else {
-            targetEl = elementNode.querySelector('.artist-card-art') || elementNode.querySelector('.artist-avatar');
-        }
-
-        if (!targetEl) return;
-
-        function applyImgToNode(url, target, node) {
-            if (!url || target.innerHTML.includes('<img')) return;
-            target.innerHTML = `<img src="${url}" crossorigin="anonymous" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; animation: fadeIn 0.5s;">`;
-            if (node.classList && node.classList.contains('artist-hero-avatar')) {
-                const artistView = document.getElementById('artist-view');
-                if (artistView) artistView.style.setProperty('--view-bg-image', `url("${url}")`);
-            }
-        }
-
-        if (!artistImageCache[artistName]) {
-            artistImageCache[artistName] = { resolved: false, pending: false, waiters: [] };
-        }
-
-        const state = artistImageCache[artistName];
-
-        if (state.resolved) {
-            applyImgToNode(useXL ? state.xl : state.medium, targetEl, elementNode);
-            return;
-        }
-
-        // Add to waiters list for when fetch completes
-        state.waiters.push({ targetEl, elementNode, useXL });
-
-        if (state.pending) return; // Wait for the in-flight fetch
-
-        state.pending = true;
-        try {
-            const metadata = await API.getDeezerMetadata(artistName);
-            if (metadata.data && metadata.data.length > 0) {
-                const obj = metadata.data[0];
-                state.resolved = true;
-                state.medium = obj.picture_medium || obj.picture;
-                state.xl = obj.picture_xl || obj.picture_big || obj.picture;
-            }
-        } catch (e) {
-            console.error('Deezer fetch error', e);
-        } finally {
-            state.pending = false;
-            const finalWaiters = state.waiters;
-            state.waiters = []; // Clear before applying to avoid potential recursion issues
-
-            finalWaiters.forEach(w => {
-                if (state.resolved) {
-                    applyImgToNode(w.useXL ? state.xl : state.medium, w.targetEl, w.elementNode);
-                }
-            });
-
-            if (state.resolved) {
-                document.dispatchEvent(new CustomEvent('artist-image-resolved', { detail: artistName }));
-            }
-        }
-    }
 
     allPlaylists = window.allPlaylists;
     let downloadedTracksMap = new Map(); // url -> localPath
@@ -988,7 +871,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentTrackItem = trackItem;
 
         const rect = sourceBtn.getBoundingClientRect();
-        const scale = getZoomScale();
+        const scale = Theme.getZoomScale();
         trackContextMenu.style.top = `${(rect.bottom / scale) + 5}px`;
         trackContextMenu.style.left = `${(rect.right / scale) - 180}px`;
 
@@ -1647,21 +1530,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
             </div>
 
-            <div class="settings-section">
-                <div class="settings-section-title">Display</div>
-                <div class="settings-row">
-                    <div class="settings-row-info">
-                        <div class="settings-row-label">Zoom Level</div>
-                        <div class="settings-row-sub">Adjust the interface scale. Current: <span id="zoom-value-label">${localStorage.getItem('zoomLevel') || '100'}%</span></div>
-                    </div>
-                    <div class="settings-input-group zoom-slider-group">
-                        <span class="zoom-min-label">70%</span>
-                        <input id="zoom-range-input" type="range" min="70" max="130" step="5" value="${localStorage.getItem('zoomLevel') || '100'}" class="settings-range-input">
-                        <span class="zoom-max-label">130%</span>
-                        <button id="zoom-reset-btn" class="zoom-reset-btn">Reset</button>
-                    </div>
-                </div>
-            </div>
         `;
 
         // Audio Quality Handlers
@@ -1718,23 +1586,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupCustomSelect('setting-download-quality', 'setting-download-quality-dropdown', 'downloadQuality');
 
         // Network section handlers
-        const zoomInput = document.getElementById('zoom-range-input');
-        const zoomLabel = document.getElementById('zoom-value-label');
-        if (zoomInput && zoomLabel) {
-            zoomInput.addEventListener('input', (e) => {
-                const val = e.target.value;
-                zoomLabel.textContent = `${val}%`;
-                const scale = parseFloat(val) / 100;
-                document.documentElement.style.setProperty('--app-zoom', scale);
-                localStorage.setItem('zoomLevel', val);
-            });
-            document.getElementById('zoom-reset-btn').addEventListener('click', () => {
-                zoomInput.value = 100;
-                zoomLabel.textContent = '100%';
-                document.documentElement.style.setProperty('--app-zoom', '1');
-                localStorage.setItem('zoomLevel', '100');
-            });
-        }
 
         // Crossfade Handler
         const crossfadeSlider = document.getElementById('setting-crossfade-duration');
@@ -2434,32 +2285,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     function switchToHomeView(push = true) {
         if (push) navigateTo('home');
         hideOverlays();
-        albumView.classList.remove('active'); albumView.classList.add('hidden');
-        searchView.classList.remove('active'); searchView.classList.add('hidden');
-        artistView.classList.remove('active'); artistView.classList.add('hidden');
-        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
-        const glv1 = document.getElementById('likes-view'); if (glv1) { glv1.classList.remove('active'); glv1.classList.add('hidden'); }
-        const ghv1 = document.getElementById('history-view'); if (ghv1) { ghv1.classList.remove('active'); ghv1.classList.add('hidden'); }
-        const gdv1 = document.getElementById('downloads-view'); if (gdv1) { gdv1.classList.remove('active'); gdv1.classList.add('hidden'); }
-        const gsv1 = document.getElementById('stats-view'); if (gsv1) { gsv1.classList.remove('active'); gsv1.classList.add('hidden'); }
-        const gpv1 = document.getElementById('profile-view'); if (gpv1) { gpv1.classList.remove('active'); gpv1.classList.add('hidden'); }
-
+        hideAllViews();
         homeView.classList.remove('hidden'); homeView.classList.add('active');
     }
 
     function switchToHistoryView(push = true) {
         if (push) navigateTo('history');
         hideOverlays();
-
-        homeView.classList.remove('active'); homeView.classList.add('hidden');
-        searchView.classList.remove('active'); searchView.classList.add('hidden');
-        albumView.classList.remove('active'); albumView.classList.add('hidden');
-        artistView.classList.remove('active'); artistView.classList.add('hidden');
-        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
-        const glv1 = document.getElementById('likes-view'); if (glv1) { glv1.classList.remove('active'); glv1.classList.add('hidden'); }
-        const gdv1 = document.getElementById('downloads-view'); if (gdv1) { gdv1.classList.remove('active'); gdv1.classList.add('hidden'); }
-        const gsv1 = document.getElementById('stats-view'); if (gsv1) { gsv1.classList.remove('active'); gsv1.classList.add('hidden'); }
-        const gpv1 = document.getElementById('profile-view'); if (gpv1) { gpv1.classList.remove('active'); gpv1.classList.add('hidden'); }
+        hideAllViews();
 
         const historyView = document.getElementById('history-view');
         if (historyView) {
@@ -2472,16 +2305,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function switchToLikesView(push = true) {
         if (push) navigateTo('likes');
         hideOverlays();
-
-        homeView.classList.remove('active'); homeView.classList.add('hidden');
-        searchView.classList.remove('active'); searchView.classList.add('hidden');
-        albumView.classList.remove('active'); albumView.classList.add('hidden');
-        artistView.classList.remove('active'); artistView.classList.add('hidden');
-        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
-        const ghv1 = document.getElementById('history-view'); if (ghv1) { ghv1.classList.remove('active'); ghv1.classList.add('hidden'); }
-        const gdv1 = document.getElementById('downloads-view'); if (gdv1) { gdv1.classList.remove('active'); gdv1.classList.add('hidden'); }
-        const gsv1 = document.getElementById('stats-view'); if (gsv1) { gsv1.classList.remove('active'); gsv1.classList.add('hidden'); }
-        const gpv1 = document.getElementById('profile-view'); if (gpv1) { gpv1.classList.remove('active'); gpv1.classList.add('hidden'); }
+        hideAllViews();
 
         const likesView = document.getElementById('likes-view');
         if (likesView) {
@@ -2493,16 +2317,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function switchToDownloadsView(push = true) {
         if (push) navigateTo('downloads');
         hideOverlays();
-
-        homeView.classList.remove('active'); homeView.classList.add('hidden');
-        searchView.classList.remove('active'); searchView.classList.add('hidden');
-        albumView.classList.remove('active'); albumView.classList.add('hidden');
-        artistView.classList.remove('active'); artistView.classList.add('hidden');
-        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
-        const glv1 = document.getElementById('likes-view'); if (glv1) { glv1.classList.remove('active'); glv1.classList.add('hidden'); }
-        const ghv1 = document.getElementById('history-view'); if (ghv1) { ghv1.classList.remove('active'); ghv1.classList.add('hidden'); }
-        const gsv1 = document.getElementById('stats-view'); if (gsv1) { gsv1.classList.remove('active'); gsv1.classList.add('hidden'); }
-        const gpv1 = document.getElementById('profile-view'); if (gpv1) { gpv1.classList.remove('active'); gpv1.classList.add('hidden'); }
+        hideAllViews();
 
         const downloadsView = document.getElementById('downloads-view');
         if (downloadsView) {
@@ -2513,20 +2328,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
 
+    function switchToThemesView(push = true) {
+        if (push) navigateTo('themes');
+        hideOverlays();
+        hideAllViews();
+        const tv = document.getElementById('themes-view');
+        if (tv) {
+            tv.classList.remove('hidden');
+            tv.classList.add('active');
+        }
+        updateThemeUIState();
+    }
+
+    function hideAllViews() {
+        const views = ['home-view', 'search-view', 'artist-view', 'album-view', 'playlist-view', 'likes-view', 'history-view', 'downloads-view', 'stats-view', 'profile-view', 'themes-view'];
+        views.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.remove('active');
+                el.classList.add('hidden');
+            }
+        });
+    }
+
+    function updateThemeUIState() {
+        const profile = Theme.getProfile();
+        const cards = document.querySelectorAll('.theme-card');
+        cards.forEach(c => {
+            c.style.borderColor = 'var(--surface-border)';
+            c.style.borderWidth = '1px';
+            c.style.borderStyle = 'solid';
+            c.style.transform = 'scale(1)';
+        });
+        
+        const activeId = profile === 'simon_default' ? 'theme-simon-default' : 'theme-rgb';
+        const activeCard = document.getElementById(activeId);
+        if (activeCard) {
+            activeCard.style.borderColor = 'var(--accent)';
+            activeCard.style.borderWidth = '2px';
+            activeCard.style.transform = 'scale(1.02)';
+        }
+
+        const zoom = localStorage.getItem('zoomLevel') || '100';
+        const slider = document.getElementById('theme-zoom-slider');
+        const label = document.getElementById('zoom-value-label');
+        if (slider) slider.value = zoom;
+        if (label) label.textContent = `${zoom}%`;
+    }
+
     function switchToSearchView(push = true) {
         if (push) navigateTo('search', { query: searchInput.value || (mobileSearchInput ? mobileSearchInput.value : '') });
         hideOverlays();
-        albumView.classList.remove('active'); albumView.classList.add('hidden');
-        homeView.classList.remove('active'); homeView.classList.add('hidden');
-        artistView.classList.remove('active'); artistView.classList.add('hidden');
-        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
-        const glv2 = document.getElementById('likes-view'); if (glv2) { glv2.classList.remove('active'); glv2.classList.add('hidden'); }
-        const ghv2 = document.getElementById('history-view'); if (ghv2) { ghv2.classList.remove('active'); ghv2.classList.add('hidden'); }
-        const gdv2 = document.getElementById('downloads-view'); if (gdv2) { gdv2.classList.remove('active'); gdv2.classList.add('hidden'); }
-        const gsv2 = document.getElementById('stats-view'); if (gsv2) { gsv2.classList.remove('active'); gsv2.classList.add('hidden'); }
-        const gpv2 = document.getElementById('profile-view'); if (gpv2) { gpv2.classList.remove('active'); gpv2.classList.add('hidden'); }
-
-
+        hideAllViews();
         searchView.classList.remove('hidden'); searchView.classList.add('active');
     }
 
@@ -2534,63 +2387,64 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Note: stateData for album is usually handled by openAlbumView
         if (push) navigateTo('album');
         hideOverlays();
-        searchView.classList.remove('active'); searchView.classList.add('hidden');
-        homeView.classList.remove('active'); homeView.classList.add('hidden');
-        artistView.classList.remove('active'); artistView.classList.add('hidden');
-        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
-        const glv3 = document.getElementById('likes-view'); if (glv3) { glv3.classList.remove('active'); glv3.classList.add('hidden'); }
-        const ghv3 = document.getElementById('history-view'); if (ghv3) { ghv3.classList.remove('active'); ghv3.classList.add('hidden'); }
-        const gdv3 = document.getElementById('downloads-view'); if (gdv3) { gdv3.classList.remove('active'); gdv3.classList.add('hidden'); }
-        const gsv3 = document.getElementById('stats-view'); if (gsv3) { gsv3.classList.remove('active'); gsv3.classList.add('hidden'); }
-        const gpv3 = document.getElementById('profile-view'); if (gpv3) { gpv3.classList.remove('active'); gpv3.classList.add('hidden'); }
-
-
+        hideAllViews();
         albumView.classList.remove('hidden'); albumView.classList.add('active');
     }
 
     function switchToArtistView(push = true) {
         if (push) navigateTo('artist');
         hideOverlays();
-        searchView.classList.remove('active'); searchView.classList.add('hidden');
-        homeView.classList.remove('active'); homeView.classList.add('hidden');
-        albumView.classList.remove('active'); albumView.classList.add('hidden');
-        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
-        const glv4 = document.getElementById('likes-view'); if (glv4) { glv4.classList.remove('active'); glv4.classList.add('hidden'); }
-        const ghv4 = document.getElementById('history-view'); if (ghv4) { ghv4.classList.remove('active'); ghv4.classList.add('hidden'); }
-        const gdv4 = document.getElementById('downloads-view'); if (gdv4) { gdv4.classList.remove('active'); gdv4.classList.add('hidden'); }
-        const gsv4 = document.getElementById('stats-view'); if (gsv4) { gsv4.classList.remove('active'); gsv4.classList.add('hidden'); }
-        const gpv4 = document.getElementById('profile-view'); if (gpv4) { gpv4.classList.remove('active'); gpv4.classList.add('hidden'); }
-
+        hideAllViews();
         artistView.classList.remove('hidden'); artistView.classList.add('active');
     }
 
     function switchToPlaylistView(push = true) {
-        if (push) navigateTo('playlist');
+        if (push) navigateTo('playlist', { playlist: currentActivePlaylist });
         hideOverlays();
-        searchView.classList.remove('active'); searchView.classList.add('hidden');
-        homeView.classList.remove('active'); homeView.classList.add('hidden');
-        albumView.classList.remove('active'); albumView.classList.add('hidden');
-        artistView.classList.remove('active'); artistView.classList.add('hidden');
-        const glv5 = document.getElementById('likes-view'); if (glv5) { glv5.classList.remove('active'); glv5.classList.add('hidden'); }
-        const gsv5 = document.getElementById('stats-view'); if (gsv5) { gsv5.classList.remove('active'); gsv5.classList.add('hidden'); }
-        const gpv5 = document.getElementById('profile-view'); if (gpv5) { gpv5.classList.remove('active'); gpv5.classList.add('hidden'); }
-
-        playlistView.classList.remove('hidden'); playlistView.classList.add('active');
+        hideAllViews();
+        const pv = document.getElementById('playlist-view');
+        if (pv) {
+            pv.classList.remove('hidden');
+            pv.classList.add('active');
+        }
     }
 
+    function initThemesView() {
+        const themeDefault = document.getElementById('theme-simon-default');
+        const themeRgb = document.getElementById('theme-rgb');
+        const zoomSlider = document.getElementById('theme-zoom-slider');
+
+        if (themeDefault) {
+            themeDefault.addEventListener('click', () => {
+                Theme.setProfile('simon_default');
+                updateThemeUIState();
+            });
+        }
+
+        if (themeRgb) {
+            themeRgb.addEventListener('click', () => {
+                Theme.setProfile('rgb');
+                // Trigger an update if playing
+                if (Playback.currentTrack) {
+                    Theme.updateNowPlayingVisuals(Playback.currentTrack, currentActiveCoverUrl);
+                }
+                updateThemeUIState();
+            });
+        }
+
+        if (zoomSlider) {
+            zoomSlider.addEventListener('input', (e) => {
+                const val = e.target.value;
+                Theme.setZoom(val);
+                const label = document.getElementById('zoom-value-label');
+                if (label) label.textContent = `${val}%`;
+            });
+        }
+    }
     function switchToStatsView(push = true) {
         if (push) navigateTo('stats');
         hideOverlays();
-
-        homeView.classList.remove('active'); homeView.classList.add('hidden');
-        searchView.classList.remove('active'); searchView.classList.add('hidden');
-        albumView.classList.remove('active'); albumView.classList.add('hidden');
-        artistView.classList.remove('active'); artistView.classList.add('hidden');
-        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
-        const glv6 = document.getElementById('likes-view'); if (glv6) { glv6.classList.remove('active'); glv6.classList.add('hidden'); }
-        const ghv6 = document.getElementById('history-view'); if (ghv6) { ghv6.classList.remove('active'); ghv6.classList.add('hidden'); }
-        const gdv6 = document.getElementById('downloads-view'); if (gdv6) { gdv6.classList.remove('active'); gdv6.classList.add('hidden'); }
-        const gpv6 = document.getElementById('profile-view'); if (gpv6) { gpv6.classList.remove('active'); gpv6.classList.add('hidden'); }
+        hideAllViews();
 
         const statsView = document.getElementById('stats-view');
         if (statsView) {
@@ -2610,7 +2464,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Helper to calculate how many items fit in a horizontal row
     function calculateItemsPerRow(itemWidth = 200, gap = 24, padding = 80) {
-        const scale = typeof getZoomScale === 'function' ? getZoomScale() : 1;
+        const scale = typeof Theme.getZoomScale === 'function' ? Theme.getZoomScale() : 1;
         // Adjust the available width based on the internal application zoom
         const availableWidth = (window.innerWidth / scale) - padding;
         // Use ceil and add 1 to ensure we always overflow slightly into the right-side fade mask
@@ -3145,8 +2999,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Fetch and apply artist image for the hero avatar
         const albumAvatarNode = albumHeroDiv.querySelector('.album-hero-artist-avatar');
-        if (albumAvatarNode && typeof fetchAndApplyArtistImage === 'function') {
-            fetchAndApplyArtistImage(albumInfo.artist, albumAvatarNode, false);
+        if (albumAvatarNode) {
+            Theme.applyArtistVisuals(albumInfo.artist, albumAvatarNode, false);
         }
 
         // Add actions back
@@ -3549,9 +3403,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const heroAvatarNode = document.querySelector('.artist-hero-avatar');
         if (heroAvatarNode) {
             heroAvatarNode.innerHTML = ''; // reset for new artist
-            if (typeof fetchAndApplyArtistImage === 'function') {
-                fetchAndApplyArtistImage(artistName, heroAvatarNode, true);
-            }
+            Theme.applyArtistVisuals(artistName, heroAvatarNode, true);
         }
 
         // Render tracks
@@ -4442,7 +4294,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Position near button
         const rect = anchorEl.getBoundingClientRect();
-        const scale = getZoomScale();
+        const scale = Theme.getZoomScale();
         addToPlaylistDropdown.style.top = `${(rect.bottom / scale) + 6}px`;
         addToPlaylistDropdown.style.left = `${Math.min(rect.left / scale, (window.innerWidth / scale) - 270)}px`;
         addToPlaylistDropdown.classList.remove('hidden');
@@ -4542,9 +4394,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             card.addEventListener('click', () => openArtistView(artistName));
             recentArtistList.appendChild(card);
 
-            if (typeof fetchAndApplyArtistImage === 'function') {
-                fetchAndApplyArtistImage(artistName, card, false);
-            }
+            Theme.applyArtistVisuals(artistName, card, false);
         });
     }
 
@@ -4633,15 +4483,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (pictureUrl) {
             bottomArtWrapper.innerHTML = `<img src="${pictureUrl}" alt="Album Art">`;
-            if (immersiveBg) immersiveBg.src = pictureUrl;
             if (immersiveArt) {
                 immersiveArt.src = pictureUrl;
                 immersiveArt.style.display = 'block';
             }
-            updatePlayerBarDynamicColor(pictureUrl);
+            Theme.updateNowPlayingVisuals(track, pictureUrl);
         } else {
             bottomArtWrapper.innerHTML = '';
-            if (immersiveBg) immersiveBg.src = '';
+            Theme.updateNowPlayingVisuals(track, null);
             if (immersiveArt) immersiveArt.style.display = 'none';
         }
 
@@ -4668,37 +4517,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
 
-    function updateMediaSession(track) {
-        if (!('mediaSession' in navigator)) return;
-
-        const title = (track.metadata && track.metadata.title) ? track.metadata.title : track.filename;
-        const artist = (track.metadata && track.metadata.artist) ? track.metadata.artist : 'Unknown Artist';
-        const album = (track.metadata && track.metadata.album) ? track.metadata.album : '';
-        const artwork = (track.metadata && track.metadata.hasCover)
-            ? [{ src: `${serverBaseUrl}/api/cover?path=${encodeURIComponent(track.relativePath)}`, sizes: '512x512', type: 'image/jpeg' }]
-            : [{ src: 'icon.svg', sizes: '512x512', type: 'image/svg+xml' }];
-
-        navigator.mediaSession.metadata = new MediaMetadata({
-            title: title,
-            artist: artist,
-            album: album,
-            artwork: artwork
-        });
-
-        // Register Action Handlers
-        navigator.mediaSession.setActionHandler('play', () => {
-            Playback.resume();
-        });
-        navigator.mediaSession.setActionHandler('pause', () => {
-            Playback.pause();
-        });
-        navigator.mediaSession.setActionHandler('previoustrack', () => {
-            Playback.prev();
-        });
-        navigator.mediaSession.setActionHandler('nexttrack', () => {
-            Playback.next();
-        });
-    }
 
     // ── Offline Helper Logic ────────────────────────────────────────────────
     async function initiateDownload(track) {
@@ -4930,7 +4748,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const item = trackItems[playingIndex];
 
                     // Calculate relative scroll position to avoid bubbling up to body
-                    const scale = getZoomScale();
+                    const scale = Theme.getZoomScale();
                     const relativeTop = (item.getBoundingClientRect().top - container.getBoundingClientRect().top) / scale;
                     const scrollPosition = container.scrollTop + relativeTop - (container.clientHeight / 2) + (item.clientHeight / 2);
 
@@ -5006,6 +4824,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    const sidebarThemesBtn = document.getElementById('sidebar-themes-btn');
+    if (sidebarThemesBtn) {
+        sidebarThemesBtn.addEventListener('click', () => {
+            switchToThemesView();
+            closeSidebar();
+        });
+    }
+
     const sidebarHistoryBtn = document.getElementById('sidebar-history-btn');
     if (sidebarHistoryBtn) {
         sidebarHistoryBtn.addEventListener('click', () => {
@@ -5055,17 +4881,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.openArtistView = openArtistView;
         window.openPlaylistView = openPlaylistView;
         window.renderTrackList = renderTrackList;
-        window.fetchAndApplyArtistImage = fetchAndApplyArtistImage;
+        window.fetchAndApplyArtistImage = (name, node, xl) => Theme.applyArtistVisuals(name, node, xl);
         window.splitArtists = splitArtists;
         window.getSharedCoverUrl = getSharedCoverUrl;
 
         // Initialize modules
         Search.init();
+        Theme.init({ serverBaseUrl });
         Lyrics.init({
             container: lyricsContainer,
             immersiveView: immersiveView,
             actionBar: document.getElementById('lyrics-action-bar')
         });
+        initThemesView();
         Playback.init({
             onTrackChange: (track) => {
                 updateNowPlayingUI(track);

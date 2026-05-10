@@ -198,9 +198,7 @@ const Search = (() => {
                     </div>
                     <svg class="search-row-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 `;
-                if (window.fetchAndApplyArtistImage) {
-                    window.fetchAndApplyArtistImage(artistName, row.querySelector('.search-row-avatar'), false);
-                }
+                Theme.applyArtistVisuals(artistName, row.querySelector('.search-row-avatar'), false);
                 row.addEventListener('click', () => {
                     if (searchInput) searchInput.value = '';
                     if (window.switchToHomeView) window.switchToHomeView();
