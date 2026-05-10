@@ -1,20 +1,15 @@
-const DEFAULT_SERVER_URL = 'https://localhost:3000';
-const CURRENT_SERVER_URL = localStorage.getItem('serverUrl');
-// Keep HTTP if it's explicitly set to localhost for development
-if (CURRENT_SERVER_URL === 'http://localhost:3000' && window.location.hostname !== 'localhost') {
-    localStorage.removeItem('serverUrl');
-}
-
-const isServedFromServer = (window.location.protocol.startsWith('http')) &&
-    (window.location.hostname !== 'localhost' && !window.location.hostname.startsWith('127.'));
-// Also treat localhost as self-hosted when the page itself is served from the server (not file:// or Electron)
-const isSelfHosted = isServedFromServer ||
-    (window.location.protocol.startsWith('http') && window.location.port);
-
-let serverBaseUrl = (localStorage.getItem('serverUrl') || (isSelfHosted ? '' : DEFAULT_SERVER_URL)).replace(/\/+$/, '');
+// serverBaseUrl is now managed by the API module (js/api.js)
+const serverBaseUrl = API.getBaseUrl();
+const DEFAULT_SERVER_URL = 'https://localhost:3000'; // Keep for legacy refs if any
 
 const deviceId = localStorage.getItem('deviceId') || crypto.randomUUID();
 localStorage.setItem('deviceId', deviceId);
+
+// Shared Global State (Phase 2 Modularization)
+window.albumsData = {};
+window.allTracks = [];
+window.allPlaylists = [];
+window.currentUser = null;
 
 let albumCoverCache = new Map();
 
@@ -38,11 +33,11 @@ function getSharedCoverUrl(relativePath, artist, album) {
     const cleanArtist = artist || 'Unknown Artist';
     const cleanAlbum = album || 'Unknown Album';
     if (cleanArtist === 'Unknown Artist' && cleanAlbum === 'Unknown Album') {
-        return `${serverBaseUrl}/api/cover?path=${encodeURIComponent(relativePath)}`;
+        return API.getCoverUrl(relativePath);
     }
     const cacheKey = `${cleanArtist}|${cleanAlbum}`;
     if (albumCoverCache.has(cacheKey)) return albumCoverCache.get(cacheKey);
-    const url = `${serverBaseUrl}/api/cover?path=${encodeURIComponent(relativePath)}`;
+    const url = API.getCoverUrl(relativePath, cleanArtist, cleanAlbum);
     albumCoverCache.set(cacheKey, url);
     return url;
 }
@@ -274,11 +269,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let firebaseConfig = null;
     // Fetch config from local backend (always use this in browser/PWA)
     try {
-        const res = await fetch(`${serverBaseUrl}/api/firebase-config`);
-        if (res.ok) {
-            firebaseConfig = await res.json();
-            console.log('[Cloud] Firebase config fetched from server API.');
-        }
+        firebaseConfig = await API.getFirebaseConfig();
+        console.log('[Cloud] Firebase config fetched from server API.');
     } catch (e) {
         console.warn('[Cloud] Failed to fetch Firebase config from server API.', e);
     }
@@ -563,8 +555,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    let allTracks = [];
-    let albumsData = {};
+    allTracks = window.allTracks;
+    albumsData = window.albumsData;
     let currentPlaylistContext = [];
     let currentTrackIndex = -1;
     let isShuffleActive = false;
@@ -598,7 +590,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     let repeatMode = 0;
     let globalPlayingTrack = null;
-    let allPlaylists = [];
+    allPlaylists = window.allPlaylists;
     let activePlaylistId = null;
     let pendingAddTrack = null;
     let createPlaylistCallback = null;
@@ -2787,7 +2779,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (stateData.query !== undefined) {
                     if (searchInput) searchInput.value = stateData.query;
                     if (mobileSearchInput) mobileSearchInput.value = stateData.query;
-                    renderSearchResults(stateData.query);
+                    Search.renderSearchResults(stateData.query);
                 }
                 switchToSearchView(false);
                 break;
@@ -3094,99 +3086,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (view) mobileNavObserver.observe(view, { attributes: true, attributeFilter: ['class'] });
     });
 
-    // Global Search Logic with Debounce
-    let searchDebounceTimer = null;
-    function handleSearchInput(e) {
-        const query = e.target.value.toLowerCase().trim();
-        // Sync both inputs
-        if (searchInput) searchInput.value = e.target.value;
-        if (mobileSearchInput) mobileSearchInput.value = e.target.value;
 
-        // Clear previous timer
-        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-
-        // Handle search commit on Enter (immediate)
-        if (e.key === 'Enter' && query) {
-            saveSearchQuery(query);
-            renderSearchHistory();
-        }
-
-        // If on app view, don't auto-switch back to home when clearing search
-        if (!query) {
-            renderSearchResults(''); // clear all results
-            renderSearchHistory(); // Show history when search is empty
-            return;
-        }
-
-        // Debounce the actual rendering/querying
-        searchDebounceTimer = setTimeout(() => {
-            switchToSearchView();
-            renderSearchResults(query);
-        }, 500);
-    }
-
-    if (searchInput) {
-        searchInput.addEventListener('input', handleSearchInput);
-    }
-    if (mobileSearchInput) {
-        mobileSearchInput.addEventListener('input', handleSearchInput);
-    }
-
-    function saveSearchQuery(query) {
-        if (!query) return;
-        try {
-            let history = JSON.parse(localStorage.getItem('searchHistory') || '[]');
-            history = history.filter(q => q.toLowerCase() !== query.toLowerCase());
-            history.unshift(query);
-            localStorage.setItem('searchHistory', JSON.stringify(history.slice(0, 15)));
-        } catch (e) { }
-    }
-
-    function renderSearchHistory() {
-        if (!searchHistorySection || !searchHistoryList) return;
-
-        const query = searchInput.value || (mobileSearchInput ? mobileSearchInput.value : '');
-        if (query) {
-            searchHistorySection.classList.add('hidden');
-            return;
-        }
-
-        let history = [];
-        try {
-            history = JSON.parse(localStorage.getItem('searchHistory') || '[]');
-        } catch (e) { }
-
-        if (history.length === 0) {
-            searchHistorySection.classList.add('hidden');
-            return;
-        }
-
-        searchHistorySection.classList.remove('hidden');
-        searchHistoryList.innerHTML = '';
-
-        history.forEach(queryText => {
-            const pill = document.createElement('div');
-            pill.className = 'search-history-pill';
-            pill.textContent = queryText;
-            pill.addEventListener('click', () => {
-                if (searchInput) searchInput.value = queryText;
-                if (mobileSearchInput) mobileSearchInput.value = queryText;
-                switchToSearchView();
-                renderSearchResults(queryText);
-            });
-            searchHistoryList.appendChild(pill);
-        });
-    }
-
-    if (clearSearchHistoryBtn) {
-        clearSearchHistoryBtn.addEventListener('click', () => {
-            localStorage.removeItem('searchHistory');
-            renderSearchHistory();
-        });
-    }
-
-    // Initialize history visibility
-    renderSearchHistory();
 
     // Custom Genre Dropdown Logic
     const DEFAULT_GENRES = [
@@ -3241,162 +3141,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    async function renderSearchResults(query) {
-        // Collect unique artists that actually have albums/tracks
-        const seenArtists = new Set();
-        Object.values(albumsData).forEach(album => {
-            if (album.artist && album.artist !== 'Unknown Artist') {
-                splitArtists(album.artist).forEach(a => seenArtists.add(a));
-            }
-        });
-        const matchingArtists = Array.from(seenArtists).filter(a => a.toLowerCase().includes(query));
 
-        // Filter local/own playlists
-        const matchingPlaylists = allPlaylists.filter(p => p.name.toLowerCase().includes(query));
-
-        // Filter tracks
-        const matchingTracks = allTracks.filter(track => {
-            const title = ((track.metadata && track.metadata.title) || track.filename).toLowerCase();
-            const artist = ((track.metadata && track.metadata.artist) || '').toLowerCase();
-            const album = ((track.metadata && track.metadata.album) || '').toLowerCase();
-            return title.includes(query) || artist.includes(query) || album.includes(query) || track.filename.toLowerCase().includes(query);
-        });
-
-        renderSearchArtists(matchingArtists.slice(0, 5));
-        renderSearchPlaylists(matchingPlaylists);
-        renderSearchTracks(matchingTracks.slice(0, 20));
-
-        const hasResults = matchingArtists.length > 0 || matchingPlaylists.length > 0 || matchingTracks.length > 0;
-        if (searchEmptyState) searchEmptyState.classList.toggle('hidden', hasResults);
-
-        // Global Search for Community Playlists (Always available if Firestore is initialized)
-        if (window._fbFS && query.length >= 2) {
-            const lowerQuery = query.toLowerCase();
-            console.log('[Search] Triggering Global Search for:', lowerQuery);
-            try {
-                const snapshot = await window._fbFS.collection('playlists')
-                    .where('name_lowercase', '>=', lowerQuery)
-                    .where('name_lowercase', '<=', lowerQuery + '\uf8ff')
-                    .limit(15)
-                    .get();
-
-                console.log('[Search] Cloud snapshot size:', snapshot.size);
-                const globalPlaylists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                // Filter out playlists already in your personal library
-                const ownIds = new Set(allPlaylists.map(p => p.id));
-                const uniqueGlobal = globalPlaylists.filter(p => !ownIds.has(p.id));
-                console.log('[Search] Unique global results after filtering:', uniqueGlobal.length);
-
-                if (uniqueGlobal.length > 0) {
-                    appendGlobalSearchPlaylists(uniqueGlobal);
-                    if (searchEmptyState) searchEmptyState.classList.add('hidden');
-                }
-            } catch (err) {
-                console.error('[Search] Global playlist search failed:', err);
-            }
-        }
-    }
-
-    function appendGlobalSearchPlaylists(playlists) {
-        if (!searchPlaylistList || !searchPlaylistsSection) return;
-
-        // Remove any previous global results to prevent duplicates during typing
-        const existingGlobals = searchPlaylistList.querySelectorAll('[data-global="true"]');
-        existingGlobals.forEach(el => el.remove());
-
-        // Ensure the section is visible if we have global results
-        searchPlaylistsSection.classList.remove('hidden');
-
-        // Add a separator or sub-title if needed, but for now just append
-        playlists.forEach(pl => {
-            const row = document.createElement('div');
-            row.className = 'search-result-row';
-            row.dataset.global = "true";
-
-            let coverHtml = '';
-            if (pl.customCover) {
-                coverHtml = `<img src="${pl.customCover}" class="search-row-cover-img" alt="">`;
-            } else {
-                coverHtml = `<div class="search-row-cover-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div>`;
-            }
-
-            row.innerHTML = `
-                <div class="search-row-cover">${coverHtml}</div>
-                <div class="search-row-info">
-                    <div class="search-row-name">${pl.name}</div>
-                    <div class="search-row-type">Community Playlist &middot; ${pl.userName || 'Shared'} &middot; ${pl.tracks ? pl.tracks.length : 0} tracks</div>
-                </div>
-                <svg class="search-row-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            `;
-            row.addEventListener('click', () => { searchInput.value = ''; switchToHomeView(); openPlaylistView(pl); });
-            searchPlaylistList.appendChild(row);
-        });
-    }
-
-    function renderSearchArtists(artists) {
-        if (!searchArtistsSection || !searchArtistList) return;
-        if (artists.length === 0) { searchArtistsSection.classList.add('hidden'); return; }
-        searchArtistsSection.classList.remove('hidden');
-        searchArtistList.innerHTML = '';
-
-        artists.forEach(artistName => {
-            const row = document.createElement('div');
-            row.className = 'search-result-row';
-            row.innerHTML = `
-                <div class="artist-card-art search-row-avatar"></div>
-                <div class="search-row-info">
-                    <div class="search-row-name">${artistName}</div>
-                    <div class="search-row-type">Artist</div>
-                </div>
-                <svg class="search-row-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            `;
-            // Apply Deezer artist photo to the circular avatar
-            fetchAndApplyArtistImage(artistName, row.querySelector('.search-row-avatar'), false);
-            row.addEventListener('click', () => { searchInput.value = ''; switchToHomeView(); openArtistView(artistName); });
-            searchArtistList.appendChild(row);
-        });
-    }
-
-    function renderSearchPlaylists(playlists) {
-        if (!searchPlaylistsSection || !searchPlaylistList) return;
-        if (playlists.length === 0) { searchPlaylistsSection.classList.add('hidden'); return; }
-        searchPlaylistsSection.classList.remove('hidden');
-        searchPlaylistList.innerHTML = '';
-
-        playlists.forEach(pl => {
-            const row = document.createElement('div');
-            row.className = 'search-result-row';
-
-            let coverHtml = '';
-            if (pl.customCover) {
-                coverHtml = `<img src="${pl.customCover}" class="search-row-cover-img" alt="">`;
-            } else {
-                const coverTrack = pl.tracks ? pl.tracks.find(t => t.metadata && t.metadata.hasCover) : null;
-                coverHtml = coverTrack
-                    ? `<img src="${getSharedCoverUrl(coverTrack.relativePath, coverTrack.metadata.artist, coverTrack.metadata.album)}" class="search-row-cover-img" alt="">`
-                    : `<div class="search-row-cover-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div>`;
-            }
-
-            row.innerHTML = `
-                <div class="search-row-cover">${coverHtml}</div>
-                <div class="search-row-info">
-                    <div class="search-row-name">${pl.name}</div>
-                    <div class="search-row-type">Playlist &middot; ${pl.tracks ? pl.tracks.length : 0} track${(pl.tracks && pl.tracks.length !== 1) ? 's' : ''}</div>
-                </div>
-                <svg class="search-row-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            `;
-            row.addEventListener('click', () => { searchInput.value = ''; switchToHomeView(); openPlaylistView(pl); });
-            searchPlaylistList.appendChild(row);
-        });
-    }
-
-    function renderSearchTracks(tracks) {
-        if (!searchTracksSection || !searchTrackList) return;
-        if (tracks.length === 0) { searchTracksSection.classList.add('hidden'); return; }
-        searchTracksSection.classList.remove('hidden');
-        renderTrackList(tracks, searchTrackList);
-    }
 
     // ── Music Library Initialization ──────────────────
 
@@ -4274,14 +4019,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // 2. Try lrclib.net
-        let url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(title)}&artist_name=${encodeURIComponent(artist)}`;
-        if (album) url += `&album_name=${encodeURIComponent(album)}`;
-        if (duration) url += `&duration=${Math.round(duration)}`;
-
         try {
-            const res = await fetch(url);
-            if (res.ok) {
-                const data = await res.json();
+            const data = await API.getLyrics(title, artist, album, duration);
+            if (data) {
                 if (data.syncedLyrics) {
                     lyricsData = parseLrc(data.syncedLyrics);
                     renderLyrics();
@@ -5151,9 +4891,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!discoverStrip || !discoverSection) return;
 
         try {
-            const res = await fetch(`${serverBaseUrl}/api/discovery`);
-            if (!res.ok) throw new Error('Discovery fetch failed');
-            const discoveries = await res.json();
+            const discoveries = await API.getDiscovery();
 
             if (!discoveries || discoveries.length === 0) {
                 discoverSection.style.display = 'none';
@@ -5977,7 +5715,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } else if (activeView.id === 'search-view') {
             const query = searchInput.value || (mobileSearchInput ? mobileSearchInput.value : '');
-            if (query) renderSearchResults(query);
+            if (query) Search.renderSearchResults(query);
         }
 
         // Update Global Player Bar offline status if something is playing
@@ -6239,6 +5977,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // Always start at landing page (Home)
+        // Expose UI functions for modular access (js/search.js, etc)
+        window.switchToSearchView = switchToSearchView;
+        window.switchToHomeView = switchToHomeView;
+        window.openArtistView = openArtistView;
+        window.openPlaylistView = openPlaylistView;
+        window.renderTrackList = renderTrackList;
+        window.fetchAndApplyArtistImage = fetchAndApplyArtistImage;
+        window.splitArtists = splitArtists;
+        window.getSharedCoverUrl = getSharedCoverUrl;
+
+        // Initialize Search Module
+        if (window.Search) window.Search.init();
+
         switchToHomeView(false);
     } catch (err) {
         console.error("Initialization failed:", err);
