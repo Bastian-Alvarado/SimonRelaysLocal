@@ -542,8 +542,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Lyrics Logic State
     const lyricsContainer = document.getElementById('immersive-lyrics-container');
-    let lyricsData = [];
-    let currentLyricIndex = -1;
 
     // Queue View Logic State
     const queueBtn = document.getElementById('queue-btn');
@@ -561,7 +559,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const immersiveArt = document.getElementById('immersive-art');
     const immersiveTitle = document.getElementById('immersive-title');
     const immersiveArtist = document.getElementById('immersive-artist');
-    const immersiveLyricsContainer = lyricsContainer; // Keep reference for backward compatibility
 
     // Up Next Badge (desktop immersive)
     const immersiveUpNext = document.getElementById('immersive-up-next');
@@ -569,17 +566,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const immersiveUpNextTitle = document.getElementById('immersive-up-next-title');
     const immersiveUpNextArtist = document.getElementById('immersive-up-next-artist');
 
-    // Lyrics creation state
-    let plainLyricsCache = '';
-    let lyricsTrackUrl = '';
-    let currentLyricsTitle = '';
-    let currentLyricsArtist = '';
-    let currentLyricsAlbum = '';
-    let currentLyricsDuration = 0;
-    let syncLines = [];
-    let syncTimestamps = [];
-    let syncCurrentLineIdx = 0;
-    let syncKeyHandler = null;
 
     // ── Immersive UI logic ───────────────────────────────────────────────────
     // ── Immersive UI logic ───────────────────────────────────────────────────
@@ -656,9 +642,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (playerBar) playerBar.classList.add('fullscreen-active');
 
         // instantly scroll to active lyric if any
-        if (currentLyricIndex !== -1 && lyricsData[currentLyricIndex]) {
-            updateLyricsSync();
-        }
+        Lyrics.sync();
 
         // Populate Up Next badge
         updateImmersiveUpNext();
@@ -3583,335 +3567,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         setCachedView(`artist:${artistName}`, { artistAlbums, artistTracks });
     }
 
-    function parseLrc(lrcString) {
-        const lines = lrcString.split('\n');
-        const parsed = [];
-        const timeRegEx = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
 
-        lines.forEach(line => {
-            const match = timeRegEx.exec(line);
-            if (match) {
-                const min = parseInt(match[1]);
-                const sec = parseInt(match[2]);
-                const ms = parseInt(match[3]);
-                const timeInSeconds = min * 60 + sec + (ms / (match[3].length === 3 ? 1000 : 100));
-                const text = line.replace(timeRegEx, '').trim();
 
-                if (text) {
-                    parsed.push({ time: timeInSeconds, text: text, element: null });
-                } else {
-                    parsed.push({ time: timeInSeconds, text: '♪', element: null });
-                }
-            }
-        });
 
-        return parsed;
-    }
-
-    async function fetchLyrics(title, artist, album, duration, cachedLyrics = null) {
-        lyricsContainer.classList.remove('editor-mode');
-        lyricsContainer.innerHTML = '<div class="lyrics-placeholder">Loading lyrics...</div>';
-        if (immersiveLyricsContainer) {
-            immersiveLyricsContainer.classList.remove('editor-mode');
-            immersiveLyricsContainer.innerHTML = '<div class="lyrics-placeholder" style="color:rgba(255,255,255,0.7);">Loading lyrics...</div>';
-        }
-        lyricsData = [];
-        currentLyricIndex = -1;
-        plainLyricsCache = '';
-        lyricsTrackUrl = Playback.currentTrack ? Playback.currentTrack.url : '';
-        currentLyricsTitle = title;
-        currentLyricsArtist = artist;
-        currentLyricsAlbum = album || '';
-        currentLyricsDuration = duration || 0;
-        renderLyricsActionBar(false, false);
-
-        // 0. Check cached lyrics from IDB (passed in)
-        if (cachedLyrics) {
-            if (cachedLyrics.syncedLyrics) {
-                lyricsData = parseLrc(cachedLyrics.syncedLyrics);
-                renderLyrics();
-                renderLyricsActionBar(true, false);
-            } else {
-                plainLyricsCache = cachedLyrics.plainLyrics || '';
-                showLyricsNoSyncState();
-            }
-            return;
-        }
-
-        // 1. Check localStorage for user-created lyrics first
-        if (lyricsTrackUrl) {
-            const saved = localStorage.getItem(`lrc_${lyricsTrackUrl}`);
-            if (saved) {
-                lyricsData = parseLrc(saved);
-                renderLyrics();
-                renderLyricsActionBar(true, true);
-                return;
-            }
-        }
-
-        // 2. Try lrclib.net
-        try {
-            const data = await API.getLyrics(title, artist, album, duration);
-            if (data) {
-                if (data.syncedLyrics) {
-                    lyricsData = parseLrc(data.syncedLyrics);
-                    renderLyrics();
-                    renderLyricsActionBar(true, false);
-                } else {
-                    plainLyricsCache = data.plainLyrics || '';
-                    showLyricsNoSyncState();
-                }
-            } else {
-                showLyricsNoSyncState();
-            }
-        } catch (err) {
-            console.error('Lyrics fetch error', err);
-            lyricsContainer.innerHTML = '<div class="lyrics-placeholder">Error loading lyrics.</div>';
-        }
-    }
-
-    function renderLyrics() {
-        lyricsContainer.innerHTML = '';
-
-        lyricsData.forEach((line, index) => {
-            const imEl = document.createElement('div');
-            imEl.className = 'lyric-line';
-            imEl.textContent = line.text;
-
-            imEl.addEventListener('click', () => { Playback.seek(line.time); });
-
-            line.immersiveElement = imEl;
-
-            lyricsContainer.appendChild(imEl);
-        });
-    }
-
-    function updateLyricsSync() {
-        if (!lyricsData.length || !Playback.currentTrack) return;
-
-        const currentTime = Playback.currentTime;
-        let newIndex = -1;
-
-        for (let i = 0; i < lyricsData.length; i++) {
-            if (currentTime >= lyricsData[i].time) {
-                newIndex = i;
-            } else {
-                break;
-            }
-        }
-
-        if (newIndex !== currentLyricIndex && newIndex !== -1) {
-            currentLyricIndex = newIndex;
-
-            lyricsData.forEach((line, idx) => {
-                if (idx < currentLyricIndex) {
-                    if (line.immersiveElement) line.immersiveElement.className = 'lyric-line past';
-                } else if (idx === currentLyricIndex) {
-                    if (line.immersiveElement) line.immersiveElement.className = 'lyric-line active';
-
-                    if (immersiveView && immersiveView.classList.contains('active') && line.immersiveElement) {
-                        const containerHalfHeight = lyricsContainer.clientHeight / 2;
-                        const offsetTop = line.immersiveElement.offsetTop;
-                        const itemHalfHeight = line.immersiveElement.clientHeight / 2;
-                        lyricsContainer.scrollTo({
-                            top: Math.max(0, offsetTop - containerHalfHeight + itemHalfHeight),
-                            behavior: 'smooth'
-                        });
-                    }
-                } else {
-                    if (line.immersiveElement) line.immersiveElement.className = 'lyric-line';
-                }
-            });
-        }
-    }
-
-    // ── Lyrics Creation / Sync System ─────────────────────────────────────────
-
-    function showLyricsNoSyncState() {
-        lyricsContainer.classList.add('editor-mode');
-        lyricsContainer.innerHTML = `
-            <div class="lyrics-no-sync">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3;">
-                    <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
-                </svg>
-                <div class="lyrics-no-sync-title">No synced lyrics found</div>
-                <div class="lyrics-no-sync-sub">${plainLyricsCache ? 'Plain lyrics were found online — sync them to the music.' : 'No lyrics found. Paste them below and tap to sync.'}</div>
-                <button id="create-lyrics-btn" class="lyrics-create-btn">${plainLyricsCache ? '♩ Sync lyrics' : '♩ Create synced lyrics'}</button>
-            </div>
-        `;
-        document.getElementById('create-lyrics-btn').addEventListener('click', () => showLyricsEditor(plainLyricsCache));
-        renderLyricsActionBar(false, false);
-    }
-
-    function renderLyricsActionBar(hasLyrics = false, isCustom = false) {
-        const bar = document.getElementById('lyrics-action-bar');
-        if (!bar) return;
-        bar.innerHTML = '';
-        if (!lyricsTrackUrl) return;
-        if (!hasLyrics) {
-            if (lyricsData.length === 0) {
-                // subtle create link in bar
-            }
-            return;
-        }
-        const editBtn = document.createElement('button');
-        editBtn.className = 'lyrics-action-btn';
-        editBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Re-sync`;
-        editBtn.addEventListener('click', () => {
-            const plainText = lyricsData.map(l => l.text).join('\n');
-            showLyricsEditor(plainText);
-        });
-        bar.appendChild(editBtn);
-        if (isCustom) {
-            const sep = document.createElement('span');
-            sep.className = 'lyrics-action-sep';
-            bar.appendChild(sep);
-            const delBtn = document.createElement('button');
-            delBtn.className = 'lyrics-action-btn lyrics-action-danger';
-            delBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg> Delete custom`;
-            delBtn.addEventListener('click', () => {
-                if (confirm('Delete your custom synced lyrics for this track?')) {
-                    localStorage.removeItem(`lrc_${lyricsTrackUrl}`);
-                    fetchLyrics(currentLyricsTitle, currentLyricsArtist, currentLyricsAlbum, currentLyricsDuration);
-                }
-            });
-            bar.appendChild(delBtn);
-        }
-    }
-
-    function showLyricsEditor(initialText = '') {
-        lyricsContainer.classList.add('editor-mode');
-        lyricsContainer.innerHTML = `
-            <div class="lyrics-editor">
-                <div class="lyrics-editor-title">Lyrics Editor</div>
-                <div class="lyrics-editor-sub">One lyric line per text line. Blank lines are ignored. Click <strong>Start Syncing</strong> — the song restarts and you tap when each line begins.</div>
-                <textarea id="lyrics-textarea" class="lyrics-textarea" placeholder="Paste lyrics here, one line per lyric line...">${initialText}</textarea>
-                <div class="lyrics-editor-actions">
-                    <button id="lyrics-start-sync-btn" class="lyrics-create-btn">▶&nbsp; Start Syncing</button>
-                    <button id="lyrics-editor-cancel-btn" class="lyrics-ghost-btn">Cancel</button>
-                </div>
-            </div>
-        `;
-        document.getElementById('lyrics-editor-cancel-btn').addEventListener('click', () => {
-            if (lyricsData.length > 0) { lyricsContainer.classList.remove('editor-mode'); renderLyrics(); }
-            else showLyricsNoSyncState();
-        });
-        document.getElementById('lyrics-start-sync-btn').addEventListener('click', () => {
-            const raw = document.getElementById('lyrics-textarea').value.trim();
-            if (!raw) return;
-            const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-            if (lines.length === 0) return;
-            startSyncSession(lines);
-        });
-    }
-
-    function startSyncSession(lines) {
-        syncLines = lines;
-        syncTimestamps = [];
-        syncCurrentLineIdx = 0;
-        Playback.seek(0);
-        Playback.resume();
-        lyricsContainer.classList.add('editor-mode');
-        renderSyncSessionUI();
-        if (syncKeyHandler) document.removeEventListener('keydown', syncKeyHandler);
-        syncKeyHandler = (e) => {
-            if (!immersiveView.classList.contains('active')) return;
-            if (e.code === 'Space' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'INPUT') {
-                e.preventDefault();
-                tapSync();
-            }
-        };
-        document.addEventListener('keydown', syncKeyHandler);
-    }
-
-    function renderSyncSessionUI() {
-        const done = syncCurrentLineIdx;
-        const total = syncLines.length;
-        const current = syncLines[done] || null;
-        const next = syncLines[done + 1] || null;
-        const progressPct = total > 0 ? (done / total) * 100 : 0;
-
-        lyricsContainer.innerHTML = `
-            <div class="sync-session">
-                <div class="sync-progress-wrap">
-                    <div class="sync-progress-fill" style="width:${progressPct}%"></div>
-                </div>
-                <div class="sync-progress-text">Line <strong>${Math.min(done + 1, total)}</strong> of <strong>${total}</strong></div>
-                <div class="sync-stage">
-                    ${current
-                ? `<div class="sync-current-line">${current}</div>
-                           <div class="sync-next-line">${next ? 'Next: ' + next : '— last line —'}</div>`
-                : `<div class="sync-current-line" style="color:var(--accent);">All lines synced!</div>`
-            }
-                </div>
-                <button id="sync-tap-btn" class="sync-tap-btn" ${!current ? 'disabled' : ''}>
-                    <span>TAP</span>
-                    <kbd>Space</kbd>
-                </button>
-                <div class="sync-controls">
-                    <button id="sync-undo-btn" class="lyrics-ghost-btn" ${done === 0 ? 'disabled' : ''}>↩ Undo</button>
-                    <button id="sync-done-btn" class="lyrics-ghost-btn">✓ Save${done > 0 && done < total ? ' partial' : ''}</button>
-                    <button id="sync-cancel-btn" class="lyrics-ghost-btn">✕ Cancel</button>
-                </div>
-                <div class="sync-hint">Tap the button or press <em>Space</em> the moment each line begins</div>
-            </div>
-        `;
-
-        document.getElementById('sync-tap-btn').addEventListener('click', tapSync);
-        document.getElementById('sync-undo-btn').addEventListener('click', () => {
-            if (syncCurrentLineIdx === 0) return;
-            syncCurrentLineIdx--;
-            syncTimestamps.pop();
-            const prevTime = syncTimestamps.length > 0 ? Math.max(0, syncTimestamps[syncTimestamps.length - 1] - 0.5) : 0;
-            Playback.seek(prevTime);
-            renderSyncSessionUI();
-        });
-        document.getElementById('sync-done-btn').addEventListener('click', finishSyncSession);
-        document.getElementById('sync-cancel-btn').addEventListener('click', () => {
-            exitSyncSession();
-            if (lyricsData.length > 0) { lyricsContainer.classList.remove('editor-mode'); renderLyrics(); }
-            else showLyricsNoSyncState();
-        });
-
-        if (syncCurrentLineIdx >= syncLines.length) {
-            setTimeout(finishSyncSession, 900);
-        }
-    }
-
-    function tapSync() {
-        if (syncCurrentLineIdx >= syncLines.length) return;
-        syncTimestamps.push(Playback.currentTime);
-        syncCurrentLineIdx++;
-        renderSyncSessionUI();
-    }
-
-    function exitSyncSession() {
-        if (syncKeyHandler) {
-            document.removeEventListener('keydown', syncKeyHandler);
-            syncKeyHandler = null;
-        }
-        lyricsContainer.classList.remove('editor-mode');
-    }
-
-    function finishSyncSession() {
-        exitSyncSession();
-        if (syncTimestamps.length === 0) { showLyricsNoSyncState(); return; }
-        const synced = syncTimestamps.map((time, i) => ({ time, text: syncLines[i] }));
-        const lrcString = generateLrc(synced);
-        if (lyricsTrackUrl) localStorage.setItem(`lrc_${lyricsTrackUrl}`, lrcString);
-        lyricsData = synced;
-        renderLyrics();
-        renderLyricsActionBar(true, true);
-    }
-
-    function generateLrc(arr) {
-        return arr.map(({ time, text }) => {
-            const mins = Math.floor(time / 60);
-            const secs = Math.floor(time % 60);
-            const cs = Math.round((time % 1) * 100);
-            return `[${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(cs).padStart(2, '0')}]${text}`;
-        }).join('\n');
-    }
 
     // ── Playlist System ───────────────────────────────────────────────────────
 
@@ -5004,9 +4662,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // Lyrics
-        const album = track.metadata?.album || '';
-        const duration = track.metadata?.duration || 0;
-        fetchLyrics(title, artist, album, duration, track._cachedLyrics);
+        Lyrics.fetch(track);
         
         updateImmersiveUpNext();
     }
@@ -5405,6 +5061,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Initialize modules
         Search.init();
+        Lyrics.init({
+            container: lyricsContainer,
+            immersiveView: immersiveView,
+            actionBar: document.getElementById('lyrics-action-bar')
+        });
         Playback.init({
             onTrackChange: (track) => {
                 updateNowPlayingUI(track);
@@ -5435,7 +5096,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     totalTimeEl.textContent = formatTime(duration);
 
                     // Sync Lyrics
-                    if (typeof updateLyricsSync === 'function') updateLyricsSync();
+                    Lyrics.sync();
 
                     // Update mobile player bar progress
                     const playerBar = document.querySelector('.player-bar');
