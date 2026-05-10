@@ -57,7 +57,10 @@ const Search = (() => {
             }
 
             searchDebounceTimer = setTimeout(() => {
-                if (window.switchToSearchView) window.switchToSearchView();
+                // Only switch to search view if there's an actual query
+                if (query.length > 0 && window.switchToSearchView) {
+                    window.switchToSearchView();
+                }
                 this.renderSearchResults(query);
             }, 500);
         },

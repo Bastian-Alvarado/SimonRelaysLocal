@@ -140,7 +140,7 @@ body {
 
 .immersive-controls-top {
     position: absolute;
-    top: 30px;
+    top: calc(30px + env(safe-area-inset-top));
     right: 40px;
     display: flex;
     gap: 12px;
@@ -312,7 +312,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 24px 12px 40px;
+    padding: calc(12px + env(safe-area-inset-top)) 24px 12px 40px;
     backdrop-filter: blur(24px) saturate(1.8);
     -webkit-backdrop-filter: blur(24px) saturate(1.8);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -3032,6 +3032,7 @@ body {
         padding: 15px 15px 120px 15px;
     }
 
+    .app-header,
     .header-center,
     #settings-btn,
     .logo,
@@ -3058,7 +3059,7 @@ body {
 
     .view {
         padding: 16px !important;
-        padding-top: 24px !important;
+        padding-top: calc(24px + env(safe-area-inset-top)) !important;
         padding-bottom: 160px !important;
         /* Player (70) + Nav (70) + buffer */
         overflow-x: hidden;
@@ -3361,7 +3362,7 @@ body {
     .immersive-content {
         flex-direction: column;
         padding: 24px;
-        padding-top: 60px;
+        padding-top: calc(100px + env(safe-area-inset-top));
         padding-bottom: 140px !important;
         /* Clearance for Player Bar */
         gap: 24px;

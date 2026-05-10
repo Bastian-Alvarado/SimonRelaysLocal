@@ -3,7 +3,7 @@
  * Encapsulates all server communication logic.
  */
 const API = (() => {
-    const DEFAULT_SERVER_URL = 'https://localhost:3000';
+    const DEFAULT_SERVER_URL = 'http://localhost:3000';
     
     // Initialization logic for serverBaseUrl
     const isServedFromServer = (window.location.protocol.startsWith('http')) &&
@@ -27,7 +27,12 @@ const API = (() => {
     }
 
     return {
-        getBaseUrl: () => serverBaseUrl,
+        getBaseUrl: () => {
+            if (!serverBaseUrl && isSelfHosted) {
+                return window.location.origin;
+            }
+            return serverBaseUrl;
+        },
         setBaseUrl: (url) => {
             serverBaseUrl = url.replace(/\/+$/, '');
             localStorage.setItem('serverUrl', serverBaseUrl);
@@ -111,6 +116,15 @@ const API = (() => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: trackUrl, liked })
+            });
+            return res.json();
+        },
+
+        async renamePlaylist(id, name) {
+            const res = await request(`/api/playlists/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
             });
             return res.json();
         }
