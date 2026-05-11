@@ -55,3 +55,12 @@ Thumbs.db
 .next
 .nuxt
 .svelte-kit
+
+# Backups and Scratch Files
+recovery.js
+*_backup.*
+*_old.*
+*.ps1
+*.bat
+backup/
+temp/

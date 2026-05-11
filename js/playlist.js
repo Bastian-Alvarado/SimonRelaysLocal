@@ -7,7 +7,7 @@ const Playlist = (function() {
     let config = {
         serverBaseUrl: '',
         selectors: {
-            userStrip: 'playlists-strip',
+            userStrip: 'playlist-strip',
             discoverStrip: 'discover-strip',
             discoverSection: 'discover-section',
             view: 'playlist-view',
@@ -276,7 +276,7 @@ const Playlist = (function() {
                             `<img class="artist-avatar" src="${playlist.userPhotoURL || currentUser.photoURL}" alt="">` :
                             `<img class="artist-avatar" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIwIDIxdi0yYTRgMCAwIDAtNC00SDhhNCg0IDAgMCAwLTQgNHYyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSI3IiByPSI0Ii8+PC9zdmc+" alt="">`
                         }
-                        <strong>${playlist.userName || (isOwn ? (currentUser.displayName || 'You') : 'Shared')}</strong> · ${songCountStr}${durationStr}
+                        <strong>${playlist.userName || (isOwn ? (currentUser.displayName || 'You') : 'Shared')}</strong> \u2022 ${songCountStr}${durationStr}
                     </div>
                     <div class="album-hero-actions">
                         <button class="icon-button play-btn playlist-play-btn" title="Play All" style="width:56px;height:56px;box-shadow:0 8px 16px rgba(0,0,0,0.4);">
