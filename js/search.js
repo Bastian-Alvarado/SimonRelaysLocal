@@ -135,8 +135,15 @@ const Search = (() => {
             });
             const matchingArtists = Array.from(seenArtists).filter(a => a.toLowerCase().includes(query));
 
-            // Filter local/own playlists
-            const matchingPlaylists = allPlaylists.filter(p => p.name.toLowerCase().includes(query));
+            // Filter local/own playlists + Discovery playlists
+            const discoveryPlaylists = (typeof Playlist !== 'undefined') ? Playlist.getDiscoveryPlaylists() : [];
+            
+            const combinedPlaylists = [
+                ...allPlaylists.map(p => ({ ...p, source: 'personal' })),
+                ...discoveryPlaylists.map(p => ({ ...p, source: 'discovery' }))
+            ];
+
+            const matchingPlaylists = combinedPlaylists.filter(p => p.name.toLowerCase().includes(query));
 
             // Filter tracks
             const matchingTracks = allTracks.filter(track => {
@@ -147,7 +154,7 @@ const Search = (() => {
             });
 
             this.renderSearchArtists(matchingArtists.slice(0, 5));
-            this.renderSearchPlaylists(matchingPlaylists);
+            this.renderSearchPlaylists(matchingPlaylists.slice(0, 10));
             this.renderSearchTracks(matchingTracks.slice(0, 20));
 
             const hasResults = matchingArtists.length > 0 || matchingPlaylists.length > 0 || matchingTracks.length > 0;
@@ -234,11 +241,12 @@ const Search = (() => {
                     }
                 }
 
+                const typeLabel = pl.source === 'discovery' ? 'Discover' : 'Playlist';
                 row.innerHTML = `
                     <div class="search-row-cover">${coverHtml}</div>
                     <div class="search-row-info">
                         <div class="search-row-name">${pl.name}</div>
-                        <div class="search-row-type">Playlist &middot; ${pl.tracks ? pl.tracks.length : 0} track${(pl.tracks && pl.tracks.length !== 1) ? 's' : ''}</div>
+                        <div class="search-row-type">${typeLabel} &middot; ${pl.tracks ? pl.tracks.length : 0} track${(pl.tracks && pl.tracks.length !== 1) ? 's' : ''}</div>
                     </div>
                     <svg class="search-row-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 `;

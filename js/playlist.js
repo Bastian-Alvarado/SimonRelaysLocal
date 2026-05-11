@@ -24,6 +24,7 @@ const Playlist = (function() {
     };
 
     let allPlaylists = [];
+    let discoveryPlaylists = [];
     let currentUser = null;
 
     const CARD_PLAY_BTN_HTML = `<button class="card-play-btn" title="Play">
@@ -64,6 +65,14 @@ const Playlist = (function() {
         return `<div class="playlist-collage">${cells}</div>`;
     }
 
+    function calculateItemsPerRow(itemWidth = 200, gap = 24, padding = 80) {
+        // Shared logic with renderer.js to ensure consistent dashboard layout
+        const scale = (typeof Theme !== 'undefined' && typeof Theme.getZoomScale === 'function') ? Theme.getZoomScale() : 1;
+        const availableWidth = (window.innerWidth / scale) - padding;
+        const count = Math.ceil((availableWidth + gap) / (itemWidth + gap)) + 1;
+        return Math.max(8, count);
+    }
+
     return {
         init: function(options) {
             config = { 
@@ -81,6 +90,10 @@ const Playlist = (function() {
 
         getPlaylists: function() {
             return allPlaylists;
+        },
+
+        getDiscoveryPlaylists: function() {
+            return discoveryPlaylists;
         },
 
         setUser: function(user) {
@@ -146,7 +159,11 @@ const Playlist = (function() {
                 return;
             }
 
-            allPlaylists.forEach(pl => {
+            // Apply dynamic row limit (subtract 1 for the 'New Playlist' card)
+            const limit = Math.max(1, calculateItemsPerRow() - 1);
+            const displayPlaylists = allPlaylists.slice(0, limit);
+
+            displayPlaylists.forEach(pl => {
                 const card = document.createElement('div');
                 card.className = 'playlist-card';
                 const isOwn = currentUser && pl.userId === currentUser.uid;
@@ -183,7 +200,13 @@ const Playlist = (function() {
 
             try {
                 const discoveries = await API.getDiscovery();
-                if (!discoveries || discoveries.length === 0) {
+                // Clean up redundant "Daily" prefix from names
+                discoveryPlaylists = discoveries.map(pl => ({
+                    ...pl,
+                    name: pl.name.replace(/^Daily\s+/i, '')
+                }));
+                
+                if (discoveryPlaylists.length === 0) {
                     section.style.display = 'none';
                     return;
                 }
@@ -191,7 +214,11 @@ const Playlist = (function() {
                 section.style.display = 'block';
                 strip.innerHTML = '';
 
-                discoveries.forEach(pl => {
+                // Apply dynamic row limit (same as recently added albums)
+                const limit = calculateItemsPerRow();
+                const displayPlaylists = discoveries.slice(0, limit);
+
+                displayPlaylists.forEach(pl => {
                     const card = document.createElement('div');
                     card.className = 'playlist-card';
                     card.innerHTML = `
