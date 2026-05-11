@@ -180,6 +180,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             // ── Auth State Listener ──────────────────────────────────────────────
             window._fbAuth.onAuthStateChanged(user => {
                 currentUser = user;
+                window.currentUser = user;
+                if (typeof Playlist !== 'undefined') Playlist.init({ currentUser });
 
                 const likeTrackBtn = document.getElementById('like-track-btn');
 
@@ -2565,8 +2567,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         "Pop", "R&B", "Rock", "Soul", "Soundtrack", "Trap"
     ];
 
-    // Expose helpers for modules
-    window.getTrackFromIDB = getTrackFromIDB;
+    // Export necessary helpers for modules
+    window.getSharedCoverUrl = getSharedCoverUrl;
+    window.formatHeroDuration = formatHeroDuration;
     window.saveTrackToIDB = saveTrackToIDB;
     window.deleteTrackFromIDB = deleteTrackFromIDB;
 
@@ -2786,6 +2789,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (mins > 0) return `${mins} min ${secs} sec`;
         return `${secs} sec`;
     }
+    
+    // Export helpers for modules
+    window.getSharedCoverUrl = getSharedCoverUrl;
+    window.formatHeroDuration = formatHeroDuration;
 
     // ── View Cache (IndexedDB, 15 MB budget, 12-hour TTL, LRU) ───────────────
     const VC_DB_NAME = 'SimonRelaysViewCache';
@@ -3685,35 +3692,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         return Stats.render();
     }
 
+    // --- Playlist Logic (Moved to js/playlist.js) ---
     async function fetchPlaylists() {
-        // Small delay to ensure any recent writes (like new playlist creation) have propagated
-        await new Promise(r => setTimeout(r, 500));
-
-        if (currentUser && window._fbFS) {
-            try {
-                // Fetch ONLY current user's playlists for the Home screen
-                const snapshot = await window._fbFS.collection('playlists')
-                    .where('userId', '==', currentUser.uid)
-                    .orderBy('createdAt', 'desc')
-                    .get();
-                allPlaylists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderPlaylistsStrip();
-                return;
-            } catch (e) {
-                console.error('[Cloud] Failed to fetch playlists from Firebase', e);
-            }
-        }
-
-        // Fallback to local server (Guests or if Firebase is offline)
-        try {
-            const result = await API.getPlaylists();
-            window.allPlaylists = result;
-            allPlaylists = result;
-        } catch (e) {
-            console.error('Failed to fetch playlists from local server', e);
-        } finally {
-            renderPlaylistsStrip();
-        }
+        const playlists = await Playlist.fetchUserPlaylists();
+        window.allPlaylists = playlists;
+        Playlist.renderUserStrip();
     }
 
     async function createPlaylist(name) {
@@ -3730,18 +3713,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
                 const newPl = { id: docRef.id, name, tracks: [], userId: currentUser.uid, userName: currentUser.displayName };
                 allPlaylists.unshift(newPl);
-                renderPlaylistsStrip();
+                Playlist.renderUserStrip();
                 return newPl;
-            } catch (e) {
-                console.error('[Cloud] Failed to create playlist in Firebase', e);
-            }
+            } catch (e) { console.error('[Cloud] Failed to create playlist', e); }
         }
-
-        // Fallback to local
         try {
             const newPl = await API.createPlaylist(name);
             allPlaylists.push(newPl);
-            renderPlaylistsStrip();
+            Playlist.renderUserStrip();
             return newPl;
         } catch (e) { console.error('Failed to create playlist locally', e); }
         return null;
@@ -3749,446 +3728,79 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function deletePlaylist(id) {
         if (currentUser && window._fbFS) {
-            try {
-                await window._fbFS.collection('playlists').doc(id).delete();
-                allPlaylists = allPlaylists.filter(p => p.id !== id);
-                renderPlaylistsStrip();
-                switchToHomeView();
-                return;
-            } catch (e) {
-                console.error('[Cloud] Failed to delete playlist from Firebase', e);
-            }
+            try { await window._fbFS.collection('playlists').doc(id).delete(); }
+            catch (e) { console.error('[Cloud] Delete failed', e); }
+        } else {
+            try { await API.deletePlaylist(id); }
+            catch (e) { console.error('Local delete failed', e); }
         }
-
-        // Fallback to local
-        try {
-            await API.deletePlaylist(id);
-            allPlaylists = allPlaylists.filter(p => p.id !== id);
-            renderPlaylistsStrip();
-            switchToHomeView();
-        } catch (e) { console.error('Failed to delete playlist locally', e); }
+        allPlaylists = allPlaylists.filter(p => p.id !== id);
+        Playlist.renderUserStrip();
+        switchToHomeView();
     }
 
     async function renamePlaylist(id, name) {
         if (currentUser && window._fbFS) {
-            try {
-                await window._fbFS.collection('playlists').doc(id).update({ name });
-                const idx = allPlaylists.findIndex(p => p.id === id);
-                if (idx !== -1) allPlaylists[idx].name = name;
-                renderPlaylistsStrip();
-                return;
-            } catch (e) {
-                console.error('[Cloud] Failed to rename playlist in Firebase', e);
-            }
+            try { await window._fbFS.collection('playlists').doc(id).update({ name }); }
+            catch (e) { console.error('[Cloud] Rename failed', e); }
+        } else {
+            try { await API.renamePlaylist(id, name); }
+            catch (e) { console.error('Local rename failed', e); }
         }
-
-        // Fallback to local
-        try {
-            const updated = await API.renamePlaylist(id, name);
-            const idx = allPlaylists.findIndex(p => p.id === id);
-            if (idx !== -1) allPlaylists[idx] = updated;
-            renderPlaylistsStrip();
-        } catch (e) { console.error('Failed to rename playlist locally', e); }
-    }
-
-    async function addTrackToPlaylist(playlistId, track) {
-        const pl = allPlaylists.find(p => p.id === playlistId);
-        if (!pl) return;
-        if (pl.tracks.find(t => t.url === track.url)) return; // already in list
-        const trackData = {
-            url: track.url,
-            relativePath: track.relativePath,
-            filename: track.filename,
-            metadata: track.metadata ? {
-                title: track.metadata.title,
-                artist: track.metadata.artist,
-                album: track.metadata.album,
-                duration: track.metadata.duration,
-                hasCover: track.metadata.hasCover
-            } : null
-        };
-        const newTracks = [...pl.tracks, trackData];
-        await updatePlaylistTracks(playlistId, newTracks);
-    }
-
-    async function removeTrackFromPlaylist(playlistId, trackUrl, rowEl) {
-        const pl = allPlaylists.find(p => p.id === playlistId);
-        if (!pl) return;
-        const newTracks = pl.tracks.filter(t => t.url !== trackUrl);
-        await updatePlaylistTracks(playlistId, newTracks);
-        if (rowEl) rowEl.remove();
+        const idx = allPlaylists.findIndex(p => p.id === id);
+        if (idx !== -1) allPlaylists[idx].name = name;
+        Playlist.renderUserStrip();
     }
 
     async function updatePlaylistTracks(playlistId, tracks) {
         if (currentUser && window._fbFS) {
-            try {
-                await window._fbFS.collection('playlists').doc(playlistId).update({ tracks });
-                const idx = allPlaylists.findIndex(p => p.id === playlistId);
-                if (idx !== -1) {
-                    allPlaylists[idx].tracks = tracks;
-                    renderPlaylistsStrip();
-                    // Re-render playlist view if it's currently active
-                    if (playlistView && playlistView.classList.contains('active') && activePlaylistId === playlistId) {
-                        openPlaylistView(allPlaylists[idx], false);
-                    }
-                }
-                return;
-            } catch (e) {
-                console.error('[Cloud] Failed to update tracks in Firebase', e);
-            }
+            try { await window._fbFS.collection('playlists').doc(playlistId).update({ tracks }); }
+            catch (e) { console.error('[Cloud] Update tracks failed', e); }
+        } else {
+            try { await API.updatePlaylistTracks(playlistId, tracks); }
+            catch (e) { console.error('Local update tracks failed', e); }
         }
-
-        // Fallback to local server
-        try {
-            const updated = await API.updatePlaylistTracks(playlistId, tracks);
-            const idx = allPlaylists.findIndex(p => p.id === playlistId);
-            if (idx !== -1) {
-                allPlaylists[idx] = updated;
-                renderPlaylistsStrip();
-                // Re-render playlist view if it's currently active
-                if (playlistView && playlistView.classList.contains('active') && activePlaylistId === playlistId) {
-                    openPlaylistView(allPlaylists[idx], false);
-                }
-            }
-        } catch (e) { console.error('Failed to update playlist tracks locally', e); }
+        const idx = allPlaylists.findIndex(p => p.id === playlistId);
+        if (idx !== -1) {
+            allPlaylists[idx].tracks = tracks;
+            Playlist.renderUserStrip();
+            if (activePlaylistId === playlistId) openPlaylistView(allPlaylists[idx], false);
+        }
     }
 
     async function updatePlaylistCover(playlistId, base64) {
         if (currentUser && window._fbFS) {
-            try {
-                await window._fbFS.collection('playlists').doc(playlistId).update({ customCover: base64 });
-                const idx = allPlaylists.findIndex(p => p.id === playlistId);
-                if (idx !== -1) {
-                    allPlaylists[idx].customCover = base64;
-                    renderPlaylistsStrip();
-                    if (activePlaylistId === playlistId) {
-                        openPlaylistView(allPlaylists[idx], false);
-                    }
-                }
-            } catch (e) {
-                console.error('[Cloud] Failed to update cover in Firebase', e);
-            }
+            try { await window._fbFS.collection('playlists').doc(playlistId).update({ customCover: base64 }); }
+            catch (e) { console.error('[Cloud] Update cover failed', e); }
         }
-    }
-
-    // Build a 2×2 collage from first 4 cover-bearing tracks in the playlist
-    function buildCollageHtml(playlist) {
-        if (playlist.customCover) {
-            return `<div class="playlist-collage custom-cover"><img src="${playlist.customCover}" alt="" style="width:100%; height:100%; object-fit:cover;"></div>`;
-        }
-        const coverTracks = playlist.tracks.filter(t => t.metadata && t.metadata.hasCover).slice(0, 4);
-        let cells = '';
-        for (let i = 0; i < 4; i++) {
-            if (coverTracks[i]) {
-                const url = getSharedCoverUrl(coverTracks[i].relativePath, coverTracks[i].metadata.artist, coverTracks[i].metadata.album);
-                cells += `<img src="${url}" alt="">`;
-            } else {
-                cells += `<div class="playlist-collage-cell"><svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div>`;
-            }
-        }
-        return `<div class="playlist-collage">${cells}</div>`;
-    }
-
-    function renderPlaylistsStrip() {
-        if (!playlistStrip) return;
-        playlistStrip.innerHTML = '';
-
-        // New playlist button
-        const newCard = document.createElement('div');
-        newCard.className = 'new-playlist-card';
-        newCard.innerHTML = `
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            <span>New Playlist</span>
-        `;
-        newCard.addEventListener('click', () => openCreatePlaylistModal(null));
-        playlistStrip.appendChild(newCard);
-
-        if (allPlaylists.length === 0) {
-            // Empty state — shown inline after the New Playlist card
-            const emptyState = document.createElement('div');
-            emptyState.className = 'playlists-empty-state';
-            emptyState.innerHTML = `
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.35;">
-                    <path d="M9 18V5l12-2v13"/>
-                    <circle cx="6" cy="18" r="3"/>
-                    <circle cx="18" cy="16" r="3"/>
-                </svg>
-                <div class="playlists-empty-title">No playlists yet</div>
-                <div class="playlists-empty-sub">Click the card to create your first one</div>
-            `;
-            playlistStrip.appendChild(emptyState);
-            return;
-        }
-
-        allPlaylists.forEach(pl => {
-            const card = document.createElement('div');
-            card.className = 'playlist-card';
-            const isOwn = currentUser && pl.userId === currentUser.uid;
-
-            card.innerHTML = `
-                <div class="card-art-wrapper">
-                    ${buildCollageHtml(pl)}
-                    ${!isOwn ? '<div class="community-badge">Community</div>' : ''}
-                    ${CARD_PLAY_BTN_HTML}
-                </div>
-                <div class="playlist-card-title" title="${pl.name}">${pl.name}</div>
-                <div class="playlist-card-label">${pl.tracks.length} track${pl.tracks.length !== 1 ? 's' : ''}</div>
-            `;
-            card.querySelector('.card-play-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (pl.tracks.length === 0) return;
-                const firstIdx = pl.tracks.findIndex(t => !isTrackUnsupported(t));
-                if (firstIdx === -1) return;
-                Playback.playTrack(pl.tracks[firstIdx], pl.tracks, firstIdx);
-            });
-            card.addEventListener('click', () => openPlaylistView(pl));
-            playlistStrip.appendChild(card);
-        });
-    }
-
-    async function renderDiscoveryStrip() {
-        const discoverSection = document.getElementById('discover-section');
-        const discoverStrip = document.getElementById('discover-strip');
-        if (!discoverStrip || !discoverSection) return;
-
-        try {
-            const discoveries = await API.getDiscovery();
-
-            if (!discoveries || discoveries.length === 0) {
-                discoverSection.style.display = 'none';
-                return;
-            }
-
-            discoverSection.style.display = 'block';
-            discoverStrip.innerHTML = '';
-
-            discoveries.forEach(pl => {
-                const card = document.createElement('div');
-                card.className = 'playlist-card';
-
-                card.innerHTML = `
-                    <div class="card-art-wrapper">
-                        ${buildCollageHtml(pl)}
-                        <div class="community-badge">Discover</div>
-                        ${CARD_PLAY_BTN_HTML}
-                    </div>
-                    <div class="playlist-card-title" title="${pl.name}">${pl.name}</div>
-                    <div class="playlist-card-label">${pl.tracks.length} track${pl.tracks.length !== 1 ? 's' : ''}</div>
-                `;
-
-                card.querySelector('.card-play-btn').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    if (pl.tracks.length === 0) return;
-                    const firstIdx = pl.tracks.findIndex(t => !isTrackUnsupported(t));
-                    if (firstIdx === -1) return;
-                    Playback.playTrack(pl.tracks[firstIdx], pl.tracks, firstIdx);
-                });
-
-                card.addEventListener('click', () => {
-                    openPlaylistView(pl);
-                });
-
-                discoverStrip.appendChild(card);
-            });
-        } catch (e) {
-            console.error('[Discover] Failed to fetch discoveries:', e);
-            discoverSection.style.display = 'none';
+        const idx = allPlaylists.findIndex(p => p.id === playlistId);
+        if (idx !== -1) {
+            allPlaylists[idx].customCover = base64;
+            Playlist.renderUserStrip();
+            if (activePlaylistId === playlistId) openPlaylistView(allPlaylists[idx], false);
         }
     }
 
     function openPlaylistView(playlist, push = true) {
+        Playlist.renderPlaylistView(playlist);
         if (push) navigateTo('playlist', { playlist });
         activePlaylistId = playlist.id;
         switchToPlaylistView(false);
-
-        const isOwnPlaylist = currentUser && playlist.userId === currentUser.uid;
-
-        // Background logic: Custom cover takes priority, then first track cover
-        let bgUrl = 'none';
-        if (playlist.customCover) {
-            bgUrl = `url("${playlist.customCover}")`;
-        } else {
-            const firstCoverTrack = playlist.tracks.find(t => t.metadata && t.metadata.hasCover);
-            if (firstCoverTrack) {
-                const url = getSharedCoverUrl(firstCoverTrack.relativePath, firstCoverTrack.metadata.artist, firstCoverTrack.metadata.album);
-                bgUrl = `url("${url}")`;
-            }
+        
+        // Use the passed playlist object if it has tracks (Search/Discover results)
+        // or find in allPlaylists for the most up-to-date local version.
+        const pl = allPlaylists.find(p => p.id === playlist.id) || playlist;
+        
+        if (pl && pl.tracks) {
+            const isOwn = currentUser && pl.userId === currentUser.uid;
+            renderTrackList(pl.tracks, playlistTrackList, true, pl.id, isOwn);
         }
-        if (playlistView) playlistView.style.setProperty('--view-bg-image', bgUrl);
-
-        const totalDuration = playlist.tracks.reduce((sum, t) => sum + (t.metadata && t.metadata.duration ? t.metadata.duration : 0), 0);
-        const durationStr = totalDuration > 0 ? ` · ${formatHeroDuration(Math.round(totalDuration))}` : '';
-        const songCountStr = `${playlist.tracks.length} track${playlist.tracks.length !== 1 ? 's' : ''}`;
-
-        // Match Album View Structure
-        let coverHtml = '';
-        const coverTooltip = isOwnPlaylist ? 'title="Change Cover"' : '';
-        const overlayHtml = isOwnPlaylist ? `
-            <div class="edit-cover-overlay">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-            </div>
-        ` : '';
-
-        if (playlist.customCover) {
-            coverHtml = `
-                <div class="playlist-art-interactive album-hero-cover" ${coverTooltip}>
-                    <img src="${playlist.customCover}" style="width:100%; height:100%; object-fit:cover;">
-                    ${overlayHtml}
-                    ${!isOwnPlaylist ? '<div class="community-badge">Community</div>' : ''}
-                </div>
-            `;
-        } else {
-            const collage = buildCollageHtml(playlist);
-            coverHtml = `
-                <div class="playlist-art-interactive album-hero-cover" ${coverTooltip}>
-                    ${collage}
-                    ${overlayHtml}
-                    ${!isOwnPlaylist ? '<div class="community-badge">Community</div>' : ''}
-                </div>
-            `;
-        }
-
-        playlistHeroDiv.innerHTML = `
-            ${coverHtml}
-            <div class="album-hero-info">
-                <div class="album-hero-label">Playlist</div>
-                ${isOwnPlaylist ?
-                `<input class="playlist-title-editable album-hero-title" value="${playlist.name}" spellcheck="false">` :
-                `<div class="album-hero-title">${playlist.name}</div>`
-            }
-                <div class="album-hero-meta">
-                    ${(playlist.userPhotoURL || (isOwnPlaylist && currentUser.photoURL)) ?
-                `<img class="artist-avatar" src="${playlist.userPhotoURL || currentUser.photoURL}" alt="">` :
-                `<img class="artist-avatar" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIwIDIxdi0yYTRgMCAwIDAtNC00SDhhNCg0IDAgMCAwLTQgNHYyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSI3IiByPSI0Ii8+PC9zdmc+" alt="">`
-            }
-                    <strong>${playlist.userName || (isOwnPlaylist ? (currentUser.displayName || 'You') : 'Shared')}</strong> · ${songCountStr}${durationStr}
-                </div>
-                <div class="album-hero-actions">
-                    <button class="icon-button play-btn playlist-play-btn" title="Play All" style="width:56px;height:56px;box-shadow:0 8px 16px rgba(0,0,0,0.4);">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
-                    </button>
-                    ${isOwnPlaylist ? `
-                        <button class="secondary-action-btn delete-playlist-btn">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                            Delete
-                        </button>
-                    ` : `
-                        <button class="secondary-action-btn save-to-library-btn">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
-                            Save to Library
-                        </button>
-                    `}
-                </div>
-            </div>
-        `;
-
-        if (isOwnPlaylist) {
-            // Handle cover change
-            playlistHeroDiv.querySelector('.playlist-art-interactive').addEventListener('click', () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.onchange = async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-
-                    const reader = new FileReader();
-                    reader.onload = async (re) => {
-                        const img = new Image();
-                        img.onload = () => {
-                            const canvas = document.createElement('canvas');
-                            let width = img.width;
-                            let height = img.height;
-                            const maxSide = 800;
-                            if (width > height) {
-                                if (width > maxSide) { height *= maxSide / width; width = maxSide; }
-                            } else {
-                                if (height > maxSide) { width *= maxSide / height; height = maxSide; }
-                            }
-                            canvas.width = width;
-                            canvas.height = height;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0, width, height);
-                            const base64 = canvas.toDataURL('image/jpeg', 0.8);
-                            updatePlaylistCover(playlist.id, base64);
-                        };
-                        img.src = re.target.result;
-                    };
-                    reader.readAsDataURL(file);
-                };
-                input.click();
-            });
-        }
-
-        if (isOwnPlaylist) {
-            // Inline rename
-            const titleInput = playlistHeroDiv.querySelector('.playlist-title-editable');
-            titleInput.addEventListener('blur', () => {
-                const newName = titleInput.value.trim();
-                if (newName && newName !== playlist.name) {
-                    playlist.name = newName;
-                    renamePlaylist(playlist.id, newName);
-                }
-            });
-            titleInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') titleInput.blur(); });
-        }
-
-        // Play all
-        playlistHeroDiv.querySelector('.playlist-play-btn').addEventListener('click', () => {
-            if (!playlist.tracks || playlist.tracks.length === 0) return;
-            Playback.playTrack(playlist.tracks[0], playlist.tracks, 0);
-        });
-
-        if (isOwnPlaylist) {
-            // Delete
-            playlistHeroDiv.querySelector('.delete-playlist-btn').addEventListener('click', () => {
-                if (confirm(`Delete "${playlist.name}"?`)) {
-                    deletePlaylist(playlist.id);
-                    switchToHomeView();
-                }
-            });
-        } else {
-            // Save to Library
-            const saveBtn = playlistHeroDiv.querySelector('.save-to-library-btn');
-            if (saveBtn) {
-                saveBtn.addEventListener('click', async () => {
-                    if (!currentUser) {
-                        alert('Please sign in to save playlists.');
-                        return;
-                    }
-                    saveBtn.disabled = true;
-                    saveBtn.textContent = 'Saving...';
-
-                    try {
-                        const newName = `${playlist.name} (Shared)`;
-                        const newPl = await createPlaylist(newName);
-                        if (newPl && playlist.tracks) {
-                            await updatePlaylistTracks(newPl.id, playlist.tracks);
-                            if (playlist.customCover) {
-                                await updatePlaylistCover(newPl.id, playlist.customCover);
-                            }
-                        }
-                        saveBtn.textContent = 'Saved to Library!';
-                        setTimeout(() => {
-                            saveBtn.disabled = false;
-                            saveBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg> Save to Library`;
-                        }, 2000);
-                    } catch (e) {
-                        console.error('Failed to clone playlist', e);
-                        saveBtn.disabled = false;
-                        saveBtn.textContent = 'Error saving';
-                    }
-                });
-            }
-        }
-
-        renderTrackList(playlist.tracks, playlistTrackList, true, playlist.id, isOwnPlaylist);
-
-        // Write to view cache (fire-and-forget)
-        setCachedView(`playlist:${playlist.id}`, playlist);
     }
+
+    async function renderDiscoveryStrip() {
+        return Playlist.renderDiscoverStrip();
+    }
+
 
     // ── Add-to-playlist dropdown ──────────────────────────────────────────────
     function showAddToPlaylistDropdown(track, anchorEl) {
@@ -4825,6 +4437,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.openArtistView = openArtistView;
         window.openPlaylistView = openPlaylistView;
         window.renderTrackList = renderTrackList;
+        window.openCreatePlaylistModal = openCreatePlaylistModal;
+        window.triggerPlaylistCoverChange = (id) => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (re) => {
+                    const img = new Image();
+                    img.onload = async () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 500;
+                        let width = img.width;
+                        let height = img.height;
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        const base64 = canvas.toDataURL('image/jpeg', 0.8);
+                        await updatePlaylistCover(id, base64);
+                    };
+                    img.src = re.target.result;
+                };
+                reader.readAsDataURL(file);
+            };
+            input.click();
+        };
         window.fetchAndApplyArtistImage = (name, node, xl) => Theme.applyArtistVisuals(name, node, xl);
         window.splitArtists = splitArtists;
         window.getSharedCoverUrl = getSharedCoverUrl;
@@ -4833,6 +4478,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         Search.init();
         Theme.init({ serverBaseUrl });
         Stats.init({ serverBaseUrl });
+        Playlist.init({
+            serverBaseUrl,
+            currentUser,
+            selectors: {
+                hero: 'playlist-hero'
+            },
+            callbacks: {
+                onNavigate: (playlist) => openPlaylistView(playlist),
+                onPlay: (track, list, index) => Playback.playTrack(track, list, index),
+                onDelete: (id) => deletePlaylist(id),
+                onRenamed: (id, name) => renamePlaylist(id, name)
+            }
+        });
         Lyrics.init({
             container: lyricsContainer,
             immersiveView: immersiveView,
