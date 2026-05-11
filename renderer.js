@@ -42,6 +42,16 @@ function getSharedCoverUrl(relativePath, artist, album) {
     return url;
 }
 
+function calculateItemsPerRow(itemWidth = 200, gap = 24, padding = 80) {
+    const scale = typeof Theme.getZoomScale === 'function' ? Theme.getZoomScale() : 1;
+    // Adjust the available width based on the internal application zoom
+    const zoomAdjustedWidth = window.innerWidth / scale;
+    const availableWidth = zoomAdjustedWidth - padding;
+    const items = Math.floor(availableWidth / (itemWidth + gap));
+    return Math.max(8, items);
+}
+window.calculateItemsPerRow = calculateItemsPerRow;
+
 document.addEventListener('DOMContentLoaded', async () => {
 
     // Views
@@ -181,7 +191,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             window._fbAuth.onAuthStateChanged(user => {
                 currentUser = user;
                 window.currentUser = user;
-                if (typeof Playlist !== 'undefined') Playlist.init({ currentUser });
+                if (typeof Playlist !== 'undefined') {
+                    Playlist.setUser(user);
+                }
 
                 const likeTrackBtn = document.getElementById('like-track-btn');
 
@@ -210,12 +222,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
 
                     // Clear playlists and likes on logout
-                    allPlaylists = [];
+                    window.allPlaylists = [];
                     likedTracks.clear();
                     allLikedTracksCache = [];
                     updateLikeButtonState();
-
-                    renderPlaylistsStrip();
+                    
+                    if (typeof Playlist !== 'undefined') {
+                        Playlist.setPlaylists([]);
+                        Playlist.renderUserStrip();
+                    }
                     fetchPlaylists(); // Will trigger local fallback or empty render
 
                     if (settingsView && settingsView.classList.contains('active')) renderSettingsPanel();
@@ -357,73 +372,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     let pendingUploads = new Set();  // url
     let currentActiveBlobUrl = null;
     let currentActiveCoverUrl = null;
-
-    // ── IndexedDB Configuration (PWA Offline Support) ───────────────────────
-    let db = null;
-    const DB_NAME = 'SimonRelaysOffline';
-    const DB_VERSION = 1;
-
-    async function initDB() {
-        if (db) return db;
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(DB_NAME, DB_VERSION);
-            request.onupgradeneeded = (e) => {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains('tracks')) {
-                    db.createObjectStore('tracks', { keyPath: 'trackUrl' });
-                }
-            };
-            request.onsuccess = (e) => {
-                db = e.target.result;
-                resolve(db);
-            };
-            request.onerror = (e) => reject(e.target.error);
-        });
-    }
-
-    async function saveTrackToIDB(trackUrl, blob, metadata, coverBlob = null, lyrics = null) {
-        const db = await initDB();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(['tracks'], 'readwrite');
-            const store = transaction.objectStore('tracks');
-            const request = store.put({ trackUrl, blob, metadata, coverBlob, lyrics, savedAt: Date.now() });
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
-    }
-
-    async function getTrackFromIDB(trackUrl) {
-        const db = await initDB();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(['tracks'], 'readonly');
-            const store = transaction.objectStore('tracks');
-            const request = store.get(trackUrl);
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-    }
-
-    async function deleteTrackFromIDB(trackUrl) {
-        const db = await initDB();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(['tracks'], 'readwrite');
-            const store = transaction.objectStore('tracks');
-            const request = store.delete(trackUrl);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
-    }
-
-    async function getAllDownloadedFromIDB() {
-        const db = await initDB();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(['tracks'], 'readonly');
-            const store = transaction.objectStore('tracks');
-            const request = store.getAll();
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-    }
 
     // Lyrics Logic State
     const lyricsContainer = document.getElementById('immersive-lyrics-container');
@@ -2465,19 +2413,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Helper to calculate how many items fit in a horizontal row
-    function calculateItemsPerRow(itemWidth = 200, gap = 24, padding = 80) {
-        const scale = typeof Theme.getZoomScale === 'function' ? Theme.getZoomScale() : 1;
-        // Adjust the available width based on the internal application zoom
-        const availableWidth = (window.innerWidth / scale) - padding;
-        // Use ceil and add 1 to ensure we always overflow slightly into the right-side fade mask
-        const count = Math.ceil((availableWidth + gap) / (itemWidth + gap)) + 1;
-        return Math.max(8, count);
-    }
 
     // Refresh home grid on resize to adjust item counts
     window.addEventListener('resize', () => {
-        if (homeView.classList.contains('active')) {
-            renderHomeGrid();
+        if (homeView && homeView.classList.contains('active')) {
+            Library.renderHomeStrips();
         }
     });
 
@@ -2570,8 +2510,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Export necessary helpers for modules
     window.getSharedCoverUrl = getSharedCoverUrl;
     window.formatHeroDuration = formatHeroDuration;
-    window.saveTrackToIDB = saveTrackToIDB;
-    window.deleteTrackFromIDB = deleteTrackFromIDB;
 
     function renderGenreDropdown(filter = '') {
         if (!metadataGenreDropdown) return;
@@ -2621,161 +2559,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 
-    // ── Music Library Initialization ──────────────────
-
-    async function initializeMusicLibrary() {
-        // Any reload means track metadata may have changed — clear stale view cache entries
-        _openVCDB().then(async (db) => {
-            const manifest = await _vcGetManifest(db);
-            const albumAndArtistKeys = Object.keys(manifest.entries).filter(k => k.startsWith('album:') || k.startsWith('artist:'));
-            for (const key of albumAndArtistKeys) await _vcEvict(db, manifest, key);
-            if (albumAndArtistKeys.length > 0) await _vcPut(db, { key: VC_MANIFEST, data: manifest });
-        }).catch(() => { });
-
-        try {
-            const serverRes = await fetch(`${serverBaseUrl}/api/audio`);
-            const serverTracks = serverRes.ok ? await serverRes.json() : [];
-
-            if (serverTracks.length > 0) {
-                // Mark all as server tracks
-                serverTracks.forEach(st => {
-                    st.isServer = true;
-                    st.isLocal = false;
-                });
-
-                window.allTracks = serverTracks;
-                processAlbums(serverTracks);
-            } else {
-                console.warn('Library is empty or server unreachable.');
-                window.allTracks = [];
-                renderHomeGrid(); // Clear loading placeholders
-            }
-        } catch (err) {
-            console.error('Error loading music library:', err);
-            renderHomeGrid(); // Clear loading placeholders even on error
-        }
-    }
-    // ───────────────────────────────────────────────────────────
-
-    function processAlbums(tracks) {
-        window.albumsData = {};
-
-        tracks.forEach(track => {
-            const albumName = (track.metadata && track.metadata.album) ? track.metadata.album : "Unknown Album";
-            const artistName = (track.metadata && track.metadata.artist) ? track.metadata.artist : "Unknown Artist";
-            const addedAt = track.addedAt || 0;
-
-            if (!albumsData[albumName]) {
-                albumsData[albumName] = {
-                    name: albumName,
-                    artist: artistName,
-                    coverTrackPath: (track.metadata && track.metadata.hasCover) ? track.relativePath : null,
-                    tracks: [],
-                    addedAt: addedAt
-                };
-            } else if (addedAt > albumsData[albumName].addedAt) {
-                albumsData[albumName].addedAt = addedAt;
-            }
-            albumsData[albumName].tracks.push(track);
-        });
-
-        // Sort tracks within each album by Disc Number, then Track Number, then Alphabetically
-        Object.values(albumsData).forEach(album => {
-            album.tracks.sort((a, b) => {
-                const aDiscRaw = (a.metadata && a.metadata.disk && a.metadata.disk.no) ? a.metadata.disk.no : 1;
-                const bDiscRaw = (b.metadata && b.metadata.disk && b.metadata.disk.no) ? b.metadata.disk.no : 1;
-                const aDisc = parseInt(aDiscRaw, 10) || 1;
-                const bDisc = parseInt(bDiscRaw, 10) || 1;
-                if (aDisc !== bDisc) return aDisc - bDisc;
-
-                const aNoRaw = (a.metadata && a.metadata.track && a.metadata.track.no) ? a.metadata.track.no : 9999;
-                const bNoRaw = (b.metadata && b.metadata.track && b.metadata.track.no) ? b.metadata.track.no : 9999;
-                const aNo = parseInt(aNoRaw, 10) || 9999;
-                const bNo = parseInt(bNoRaw, 10) || 9999;
-                if (aNo !== bNo) return aNo - bNo;
-
-                const aTitle = (a.metadata && a.metadata.title) ? a.metadata.title : a.filename;
-                const bTitle = (b.metadata && b.metadata.title) ? b.metadata.title : b.filename;
-                return aTitle.localeCompare(bTitle);
-            });
-        });
-
-        renderHomeGrid();
-    }
-
-    const CARD_PLAY_BTN_HTML = `<button class="card-play-btn" title="Play">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-    </button>`;
-
-    function createAlbumCard(albumInfo) {
-        const card = document.createElement('div');
-        card.className = 'album-card';
-
-        let artHtml = `<div class="album-card-art"></div>`;
-        if (albumInfo.coverTrackPath) {
-            const pictureUrl = getSharedCoverUrl(albumInfo.coverTrackPath, albumInfo.artist, albumInfo.name);
-            artHtml = `<img src="${pictureUrl}" class="album-card-art" alt="Album Cover">`;
-        }
-
-        card.innerHTML = `
-            <div class="card-art-wrapper">
-                ${artHtml}
-                ${CARD_PLAY_BTN_HTML}
-            </div>
-            <div class="album-card-title">${albumInfo.name}</div>
-            <div class="album-card-artist">${splitArtists(albumInfo.artist).map(a => `<span class="artist-link" data-artist="${a}">${a}</span>`).join('<span style="opacity:0.5">, </span>')}</div>
-        `;
-
-        card.querySelector('.card-play-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            const firstIdx = albumInfo.tracks.findIndex(t => !isTrackUnsupported(t));
-            if (firstIdx === -1) return;
-            Playback.playTrack(albumInfo.tracks[firstIdx], albumInfo.tracks, firstIdx);
-        });
-
-        card.addEventListener('click', (e) => {
-            const artistLink = e.target.closest('.artist-link');
-            if (artistLink) {
-                e.stopPropagation();
-                const targetArtist = artistLink.dataset.artist || splitArtists(albumInfo.artist)[0];
-                openArtistView(targetArtist);
-                return;
-            }
-            openAlbumView(albumInfo);
-        });
-
-        return card;
-    }
-
-    function renderHomeGrid() {
-        const recentList = document.getElementById('recent-album-list');
-        recentList.innerHTML = '';
-
-        const albumsArray = Object.values(albumsData);
-        // Sort descending by when file was added to library
-        albumsArray.sort((a, b) => b.addedAt - a.addedAt);
-
-        // Calculate dynamic count based on screen width (min 8)
-        const count = calculateItemsPerRow();
-        const recentAlbums = albumsArray.slice(0, count);
-        recentAlbums.forEach(albumInfo => {
-            recentList.appendChild(createAlbumCard(albumInfo));
-        });
-
-
-
-        if (typeof renderRecentArtists === 'function') {
-            renderRecentArtists();
-        }
-
-        if (typeof renderDiscoveryStrip === 'function') {
-            renderDiscoveryStrip();
-        }
-
-        if (typeof renderPlaylistsStrip === 'function') {
-            renderPlaylistsStrip();
-        }
-    }
+    // View Cache logic moved or kept for renderer-specific states
 
 
 
@@ -3797,9 +3581,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    async function renderDiscoveryStrip() {
-        return Playlist.renderDiscoverStrip();
-    }
+    // Discovery Nudge handled by Library module
 
 
     // ── Add-to-playlist dropdown ──────────────────────────────────────────────
@@ -4271,7 +4053,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    syncOfflineState();
 
     // Bottom Bar Click Navigation
     bottomArtist.addEventListener('click', (e) => {
@@ -4416,21 +4197,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Initial State Restoration ───────────────────────────────────────────
     try {
-        await Promise.all([
-            fetchPlaylists(),
-            initializeMusicLibrary()
-        ]);
-
-        // Auto-rescan check (24-hour interval)
-        const lastScanTime = parseInt(localStorage.getItem('lastScanTime') || '0');
-        const now = Date.now();
-        if (lastScanTime > 0 && (now - lastScanTime > 24 * 60 * 60 * 1000)) {
-            console.log('Last scan was over 24 hours ago. Triggering automatic rescan...');
-            // We run it as a floating promise so it doesn't block startup
-            rescanLocalSources().catch(e => console.error('Auto-rescan failed', e));
-        }
-
-        // Always start at landing page (Home)
         // Expose UI functions for modular access (js/search.js, etc)
         window.switchToSearchView = switchToSearchView;
         window.switchToHomeView = switchToHomeView;
@@ -4474,15 +4240,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.splitArtists = splitArtists;
         window.getSharedCoverUrl = getSharedCoverUrl;
 
-        // Initialize modules
+        // Initialize modules BEFORE data fetching
         Search.init();
         Theme.init({ serverBaseUrl });
         Stats.init({ serverBaseUrl });
+        Library.init({
+            serverBaseUrl,
+            selectors: {
+                recentAlbums: 'recent-album-list',
+                recentArtists: 'recent-artist-list'
+            },
+            callbacks: {
+                onAlbumClick: (album) => openAlbumView(album),
+                onArtistClick: (artist) => openArtistView(artist),
+                isTrackUnsupported: (track) => isTrackUnsupported(track),
+                onPlay: (track, list, index) => Playback.playTrack(track, list, index)
+            }
+        });
         Playlist.init({
             serverBaseUrl,
             currentUser,
             selectors: {
-                hero: 'playlist-hero'
+                hero: 'playlist-hero',
+                userStrip: 'playlist-strip'
             },
             callbacks: {
                 onNavigate: (playlist) => openPlaylistView(playlist),
@@ -4496,6 +4276,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             immersiveView: immersiveView,
             actionBar: document.getElementById('lyrics-action-bar')
         });
+
+        await Promise.all([
+            fetchPlaylists(),
+            Library.load(),
+            syncOfflineState()
+        ]);
+
+        // Auto-rescan check (24-hour interval)
+        const lastScanTime = parseInt(localStorage.getItem('lastScanTime') || '0');
+        const now = Date.now();
+        if (lastScanTime > 0 && (now - lastScanTime > 24 * 60 * 60 * 1000)) {
+            console.log('Last scan was over 24 hours ago. Triggering automatic rescan...');
+            rescanLocalSources().catch(e => console.error('Auto-rescan failed', e));
+        }
+
         initThemesView();
         Playback.init({
             onTrackChange: (track) => {
@@ -4506,7 +4301,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             onPlayStateChange: (isPlaying) => {
                 const icon = document.getElementById('play-icon');
                 const btn = document.getElementById('play-pause-btn');
-                
                 if (isPlaying) {
                     if (icon) icon.setAttribute('d', 'M6 19h4V5H6v14zm8-14v14h4V5h-4z');
                     if (btn) btn.title = 'Pause';
@@ -4514,7 +4308,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (icon) icon.setAttribute('d', 'M8 5v14l11-7z');
                     if (btn) btn.title = 'Play';
                 }
-                
                 if ('mediaSession' in navigator) {
                     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
                 }
@@ -4525,11 +4318,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     progressFill.style.width = `${isFinite(percent) ? percent : 0}%`;
                     currentTimeEl.textContent = formatTime(seek);
                     totalTimeEl.textContent = formatTime(duration);
-
-                    // Sync Lyrics
                     Lyrics.sync();
-
-                    // Update mobile player bar progress
                     const playerBar = document.querySelector('.player-bar');
                     if (playerBar && window.innerWidth <= 768) {
                         playerBar.style.setProperty('--player-progress', `${percent}%`);
@@ -4545,21 +4334,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
-        // Initialize UI states from module
         shuffleBtn.classList.toggle('toggle-active', Playback.isShuffleActive);
         updateRepeatUI(Playback.repeatMode);
 
         switchToHomeView(false);
         window.isAppInitialized = true;
 
-        // Check for initial hash and navigate if needed (after initialization)
         const initialHash = window.location.hash.substring(1);
         if (initialHash && initialHash !== 'home') {
             renderState(initialHash);
         }
     } catch (err) {
         console.error("Initialization failed:", err);
-        switchToHomeView(false); // fallback
+        switchToHomeView(false);
         window.isAppInitialized = true;
     }
 });

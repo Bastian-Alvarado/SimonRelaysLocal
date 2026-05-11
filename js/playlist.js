@@ -83,6 +83,10 @@ const Playlist = (function() {
             return allPlaylists;
         },
 
+        setUser: function(user) {
+            currentUser = user;
+        },
+
         fetchUserPlaylists: async function() {
             // Firestore or Local Server
             if (currentUser && window._fbFS) {
