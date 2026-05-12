@@ -55,7 +55,7 @@ const Playback = (() => {
             }
 
             // 2. Crossfade trigger
-            if (duration > 10 && seek > 10 && remain > 0 && remain <= (CROSSFADE_DURATION / 1000) && !crossfadeTimeout) {
+            if (CROSSFADE_DURATION > 0 && duration > 10 && seek > 10 && remain > 0 && remain <= (CROSSFADE_DURATION / 1000) && !crossfadeTimeout) {
                 console.log('[Audio] Crossfade threshold reached. Pre-starting next track...');
                 crossfadeTimeout = true;
                 Playback.next(true); // true = auto-advance
@@ -231,29 +231,37 @@ const Playback = (() => {
                 globalPlayingTrack = track;
                 crossfadeTimeout = false;
 
-                currentHowl = new Howl({
-                    src: [url],
-                    html5: true,
-                    format: ['mp3', 'flac', 'm4a', 'wav'],
-                    autoplay: false,
-                    volume: 0,
-                    onplay: function() {
-                        if (this !== currentHowl) return;
-                        isPlayingState = true;
-                        callbacks.onPlayStateChange?.(true);
-                        if (this._needsFadeIn) {
-                            this.fade(0, lastVolume, CROSSFADE_DURATION);
-                            this._needsFadeIn = false;
-                        }
-                    },
-                    onpause: () => { if (currentHowl && !currentHowl.playing()) { isPlayingState = false; callbacks.onPlayStateChange?.(false); } },
-                    onend: () => { if (currentHowl && !currentHowl.playing()) Playback.next(true); }
+                if (nextHowl && nextHowl._trackRef && nextHowl._trackRef.url === track.url) {
+                    console.log('[Audio] Using preloaded nextHowl for synchronous handover.');
+                    currentHowl = nextHowl;
+                    nextHowl = null;
+                    currentHowl.off('play').off('pause').off('end');
+                } else {
+                    currentHowl = new Howl({
+                        src: [url],
+                        html5: true,
+                        format: ['mp3', 'flac', 'm4a', 'wav'],
+                        autoplay: false,
+                        volume: 0
+                    });
+                }
+
+                currentHowl.on('play', function() {
+                    if (this !== currentHowl) return;
+                    isPlayingState = true;
+                    callbacks.onPlayStateChange?.(true);
+                    if (this._needsFadeIn) {
+                        this.fade(0, lastVolume, CROSSFADE_DURATION);
+                        this._needsFadeIn = false;
+                    }
                 });
+                
+                currentHowl.on('pause', () => { if (currentHowl && !currentHowl.playing()) { isPlayingState = false; callbacks.onPlayStateChange?.(false); } });
+                currentHowl.on('end', () => { if (currentHowl && !currentHowl.playing()) Playback.next(true); });
 
                 currentHowl._needsFadeIn = true;
                 
                 // CRITICAL: Call play() synchronously to maintain background audio privileges on mobile.
-                // Waiting for 'canplay' causes browsers to stall the background media fetch.
                 currentHowl.play();
                 
                 updateMediaSession(track);
@@ -267,7 +275,6 @@ const Playback = (() => {
 
             // 1. Try playing immediately if already resolved
             if (track._resolvedUrl) {
-                console.log('[Audio] Using pre-resolved URL for synchronous handover.');
                 return attemptSyncPlay(track._resolvedUrl);
             }
 
@@ -299,7 +306,23 @@ const Playback = (() => {
 
                 if (nextTrack && !nextTrack._resolvedUrl) {
                     console.log('[Audio] Pre-resolving next track:', nextTrack.filename || nextTrack.url);
-                    nextTrack._resolvedUrl = await resolveTrackUrl(nextTrack);
+                    const url = await resolveTrackUrl(nextTrack);
+                    nextTrack._resolvedUrl = url;
+                    
+                    if (nextHowl) {
+                        nextHowl.unload();
+                        nextHowl = null;
+                    }
+                    
+                    nextHowl = new Howl({
+                        src: [url],
+                        html5: true,
+                        format: ['mp3', 'flac', 'm4a', 'wav'],
+                        autoplay: false,
+                        volume: 0,
+                        preload: true
+                    });
+                    nextHowl._trackRef = nextTrack;
                 }
             } catch (e) {
                 console.warn('[Audio] Pre-resolve failed', e);
