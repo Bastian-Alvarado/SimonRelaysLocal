@@ -252,19 +252,9 @@ const Playback = (() => {
 
                 currentHowl._needsFadeIn = true;
                 
-                // Aggressive Play: Bypass browser's buffer targets by starting on 'canplay'
-                const node = currentHowl._sounds[0]?._node;
-                if (node) {
-                    const startAggressively = () => {
-                        if (currentHowl && !currentHowl.playing()) {
-                            console.log('[Audio] Aggressive start triggered (canplay)');
-                            currentHowl.play();
-                        }
-                    };
-                    node.addEventListener('canplay', startAggressively, { once: true });
-                } else {
-                    currentHowl.play();
-                }
+                // CRITICAL: Call play() synchronously to maintain background audio privileges on mobile.
+                // Waiting for 'canplay' causes browsers to stall the background media fetch.
+                currentHowl.play();
                 
                 updateMediaSession(track);
                 callbacks.onTrackChange?.(track);
