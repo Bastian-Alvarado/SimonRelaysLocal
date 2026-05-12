@@ -388,8 +388,8 @@ body {
 
 /* Cog button active state */
 .settings-btn-active {
-    background: rgba(244, 63, 94, 0.15) !important;
-    box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.4);
+    background: color-mix(in srgb, var(--accent) 15%, transparent) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
     color: var(--accent) !important;
 }
 
@@ -627,7 +627,7 @@ body {
     background: rgba(255, 255, 255, 0.1);
     transform: translateY(-8px);
     box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
-    border-color: rgba(244, 63, 94, 0.4);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .album-card-art,
@@ -676,7 +676,7 @@ body {
     opacity: 0;
     transform: translateY(6px);
     transition: opacity 0.2s ease, transform 0.2s ease, background 0.15s, box-shadow 0.15s;
-    box-shadow: 0 4px 20px rgba(225, 29, 72, 0.5);
+    box-shadow: 0 4px 20px color-mix(in srgb, var(--gradient-1) 50%, transparent);
     z-index: 2;
     flex-shrink: 0;
 }
@@ -690,7 +690,7 @@ body {
 .card-play-btn:hover {
     background: var(--accent-hover);
     transform: scale(1.1) !important;
-    box-shadow: 0 6px 24px rgba(244, 63, 94, 0.65);
+    box-shadow: 0 6px 24px color-mix(in srgb, var(--accent) 65%, transparent);
 }
 
 .card-play-btn:active {
@@ -1539,12 +1539,12 @@ body {
 .primary-btn {
     background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
     color: white;
-    box-shadow: 0 4px 15px rgba(225, 29, 72, 0.3);
+    box-shadow: 0 4px 15px color-mix(in srgb, var(--gradient-1) 30%, transparent);
 }
 
 .primary-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(225, 29, 72, 0.5);
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--gradient-1) 50%, transparent);
 }
 
 .album-row {
@@ -1785,7 +1785,7 @@ body {
 
 .new-playlist-card:hover {
     border-color: var(--accent);
-    background: rgba(244, 63, 94, 0.05);
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
 }
 
 .new-playlist-card svg {
@@ -1885,7 +1885,7 @@ body {
 }
 
 .dropdown-item.new-pl:hover {
-    background: rgba(244, 63, 94, 0.1);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .dropdown-divider {
@@ -2026,7 +2026,7 @@ body {
 }
 
 .delete-playlist-btn:hover {
-    background: rgba(244, 63, 94, 0.15);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
     border-color: var(--accent);
     color: var(--accent);
 }
@@ -2161,7 +2161,7 @@ body {
 
 .settings-text-input:focus {
     border-color: var(--accent);
-    background: rgba(244, 63, 94, 0.06);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 .settings-save-btn {
@@ -2176,12 +2176,12 @@ body {
     cursor: pointer;
     white-space: nowrap;
     transition: transform 0.15s, box-shadow 0.15s;
-    box-shadow: 0 4px 14px rgba(225, 29, 72, 0.3);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--gradient-1) 30%, transparent);
 }
 
 .settings-save-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(225, 29, 72, 0.5);
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--gradient-1) 50%, transparent);
 }
 
 .settings-save-btn:active {
@@ -2415,7 +2415,7 @@ body {
 
 .lyrics-create-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 24px rgba(225, 29, 72, 0.5);
+    box-shadow: 0 6px 24px color-mix(in srgb, var(--gradient-1) 50%, transparent);
 }
 
 .lyrics-create-btn:active {
@@ -2577,7 +2577,7 @@ body {
     align-items: center;
     justify-content: center;
     gap: 4px;
-    box-shadow: 0 8px 40px rgba(225, 29, 72, 0.45);
+    box-shadow: 0 8px 40px color-mix(in srgb, var(--gradient-1) 45%, transparent);
     animation: tapPulse 2.2s ease-in-out infinite;
     transition: transform 0.1s, box-shadow 0.1s;
 }
@@ -2607,7 +2607,7 @@ body {
 .sync-tap-btn:active {
     transform: scale(0.93);
     animation: none;
-    box-shadow: 0 4px 20px rgba(225, 29, 72, 0.3);
+    box-shadow: 0 4px 20px color-mix(in srgb, var(--gradient-1) 30%, transparent);
 }
 
 .sync-tap-btn:disabled {
@@ -2620,11 +2620,11 @@ body {
 
     0%,
     100% {
-        box-shadow: 0 8px 40px rgba(225, 29, 72, 0.45);
+        box-shadow: 0 8px 40px color-mix(in srgb, var(--gradient-1) 45%, transparent);
     }
 
     50% {
-        box-shadow: 0 8px 60px rgba(225, 29, 72, 0.7), 0 0 0 14px rgba(225, 29, 72, 0.08);
+        box-shadow: 0 8px 60px color-mix(in srgb, var(--gradient-1) 70%, transparent), 0 0 0 14px color-mix(in srgb, var(--gradient-1) 8%, transparent);
     }
 }
 
