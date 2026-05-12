@@ -243,7 +243,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const mobileSearchInput = document.getElementById('mobile-search-input');
 
     // Metadata Edit Elements
-     document.getElementById('check-progress-bar');
+    document.getElementById('check-progress-bar');
 
     // ΓöÇΓöÇ Auth Event Listeners ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     if (googleSigninBtn) {
@@ -620,7 +620,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function removeFromQueue(index, fromUserQueue) {
         Playback.removeFromQueue(index, fromUserQueue);
-        
+
         _fillInfiniteBuffer();
         renderQueueView();
         updateImmersiveUpNext();
@@ -1246,7 +1246,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const artists = splitArtists(track.metadata?.artist || '');
         const rawGenre = track.metadata?.genre || '';
         const genres = (Array.isArray(rawGenre) ? rawGenre : String(rawGenre).split(/[,\/;]+/)).map(g => String(g).trim()).filter(g => g.length > 0);
-        
+
         artists.forEach(a => {
             if (a !== 'Unknown Artist') {
                 // Aggressive decay (0.3 instead of 0.75) to prevent sticky affinity
@@ -1317,7 +1317,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // -30 if in last 3, -10 if in last 10
             const recentHistory = historyToUse.slice(-10);
             const lastThree = recentHistory.slice(-3);
-            
+
             if (lastThree.some(url => {
                 const t = allTracks.find(x => x.url === url);
                 const tArtists = splitArtists(t?.metadata?.artist || '');
@@ -1367,7 +1367,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const needed = 10 - remaining;
         let lastTrack = ctx[ctx.length - 1] || null;
-        
+
         // Use a virtual history to ensure the 10-track batch is diverse
         let tempHistory = [...sessionHistory];
         // Add existing unplayed context to temp history
@@ -1835,7 +1835,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             c.style.borderStyle = 'solid';
             c.style.transform = 'scale(1)';
         });
-        
+
         const activeId = profile === 'simon_default' ? 'theme-simon-default' : 'theme-rgb';
         const activeCard = document.getElementById(activeId);
         if (activeCard) {
@@ -2215,7 +2215,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (mins > 0) return `${mins} min ${secs} sec`;
         return `${secs} sec`;
     }
-    
+
     // Export helpers for modules
     window.getSharedCoverUrl = getSharedCoverUrl;
     window.formatHeroDuration = formatHeroDuration;
@@ -2550,22 +2550,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 4h2v2H9zm4 0h2v2h-2zm-4 7h2v2H9zm4 0h2v2h-2zm-4 7h2v2H9zm4 0h2v2h-2z"/></svg>
                 </div>` : '';
 
-            // Action buttons: Remove (Playlist/Queue) vs Add-to-playlist (other)
+            // Action buttons: Remove (Playlist/Queue) and Add-to-playlist
             let actionBtnHtml = '';
+            
+            // ALWAYS show Add-to-playlist button (the +) unless it's a very specific case
+            actionBtnHtml += `
+                <button class="add-to-playlist-btn" title="Add to playlist">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>`;
+
             if (isPlaylistView && canEdit) {
-                actionBtnHtml = `
+                actionBtnHtml += `
                     <button class="remove-from-playlist-btn" title="Remove from playlist">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>`;
             } else if (isQueueView) {
-                actionBtnHtml = `
+                actionBtnHtml += `
                     <button class="remove-from-queue-btn" title="Remove from queue">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>`;
-            } else {
-                actionBtnHtml = `
-                    <button class="add-to-playlist-btn" title="Add to playlist">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     </button>`;
             }
 
@@ -2784,7 +2786,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const clickedTrackUrl = tracks[index].url;
                     const targetIndex = Playback.currentPlaylistContext.findIndex(t => t.url === clickedTrackUrl);
                     if (targetIndex !== -1) {
-                        Playback.clearQueue(); 
+                        Playback.clearQueue();
                         Playback.playTrack(Playback.currentPlaylistContext[targetIndex], Playback.currentPlaylistContext, targetIndex);
                         renderQueueView();
                     }
@@ -3207,16 +3209,40 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    async function addTrackToPlaylist(playlistId, track) {
+        const pl = allPlaylists.find(p => p.id === playlistId);
+        if (!pl) return;
+
+        // Ensure we don't duplicate tracks by URL if that's preferred, 
+        // though usually playlists allow duplicates. We'll just add it.
+        const updatedTracks = [...(pl.tracks || []), track];
+        await updatePlaylistTracks(playlistId, updatedTracks);
+    }
+
+    async function removeTrackFromPlaylist(playlistId, trackUrl, trackItemEl) {
+        const pl = allPlaylists.find(p => p.id === playlistId);
+        if (!pl) return;
+
+        if (!confirm(`Remove this track from "${pl.name}"?`)) return;
+
+        const updatedTracks = (pl.tracks || []).filter(t => t.url !== trackUrl);
+        await updatePlaylistTracks(playlistId, updatedTracks);
+
+        if (trackItemEl) {
+            trackItemEl.remove();
+        }
+    }
+
     function openPlaylistView(playlist, push = true) {
         Playlist.renderPlaylistView(playlist);
         if (push) navigateTo('playlist', { playlist });
         activePlaylistId = playlist.id;
         switchToPlaylistView(false);
-        
+
         // Use the passed playlist object if it has tracks (Search/Discover results)
         // or find in allPlaylists for the most up-to-date local version.
         const pl = allPlaylists.find(p => p.id === playlist.id) || playlist;
-        
+
         if (pl && pl.tracks) {
             const isOwn = currentUser && pl.userId === currentUser.uid;
             renderTrackList(pl.tracks, playlistTrackList, true, pl.id, isOwn);
@@ -3423,7 +3449,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const artist = (track.metadata && track.metadata.artist) ? track.metadata.artist : 'Unknown Artist';
 
         addToHistory(track);
-        
+
         // Offline / Source UI
         const isDownloaded = downloadedTracksMap.has(track.url);
         if (bottomOfflineBtn) {
@@ -3494,7 +3520,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Lyrics
         Lyrics.fetch(track);
-        
+
         updateImmersiveUpNext();
     }
 
@@ -3950,7 +3976,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             onPlayStateChange: (isPlaying) => {
                 const icon = document.getElementById('play-icon');
                 const btn = document.getElementById('play-pause-btn');
-                
+
                 if (isPlaying) {
                     if (icon) icon.setAttribute('d', 'M6 19h4V5H6v14zm8-14v14h4V5h-4z');
                     if (btn) btn.title = 'Pause';
@@ -3958,7 +3984,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (icon) icon.setAttribute('d', 'M8 5v14l11-7z');
                     if (btn) btn.title = 'Play';
                 }
-                
+
                 if ('mediaSession' in navigator) {
                     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
                 }

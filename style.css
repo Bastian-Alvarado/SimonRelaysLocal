@@ -1076,8 +1076,8 @@ body {
 }
 
 .track-item.active {
-    background: rgba(244, 63, 94, 0.15);
-    border: 1px solid rgba(244, 63, 94, 0.3);
+    background: color-mix(in srgb, var(--accent), transparent 85%);
+    border: 1px solid color-mix(in srgb, var(--accent), transparent 70%);
 }
 
 .track-item.active .track-item-title {
@@ -1675,7 +1675,7 @@ body {
     opacity: 1;
     font-size: 38px;
     color: var(--accent);
-    text-shadow: 0 0 20px rgba(244, 63, 94, 0.4);
+    text-shadow: 0 0 20px color-mix(in srgb, var(--accent), transparent 60%);
     transform: scale(1.02);
 }
 
@@ -1826,7 +1826,7 @@ body {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    opacity: 0;
+    opacity: 0.6;
     transition: all 0.2s;
     color: white;
     flex-shrink: 0;
@@ -1948,7 +1948,7 @@ body {
 
 .track-item.drag-over {
     border-color: var(--accent);
-    background: rgba(244, 63, 94, 0.1);
+    background: color-mix(in srgb, var(--accent), transparent 90%);
 }
 
 /* Playlist view track items need extra left padding for drag handle */
@@ -1957,9 +1957,6 @@ body {
     padding-right: 48px;
 }
 
-#playlist-track-list .track-item .add-to-playlist-btn {
-    display: none;
-}
 
 /* ── Inline Playlist Name Edit ───────────────────────────────────────────── */
 .playlist-title-editable {
@@ -2230,7 +2227,7 @@ body {
     background: var(--accent);
     border-radius: 50%;
     cursor: pointer;
-    box-shadow: 0 0 10px rgba(244, 63, 94, 0.4);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent), transparent 60%);
     transition: transform 0.2s, background 0.2s;
 }
 
@@ -2246,7 +2243,7 @@ body {
     border: none;
     border-radius: 50%;
     cursor: pointer;
-    box-shadow: 0 0 10px rgba(244, 63, 94, 0.4);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent), transparent 60%);
     transition: transform 0.2s, background 0.2s;
 }
 
@@ -2412,7 +2409,7 @@ body {
     font-family: inherit;
     cursor: pointer;
     letter-spacing: 0.5px;
-    box-shadow: 0 4px 20px rgba(225, 29, 72, 0.35);
+    box-shadow: 0 4px 20px color-mix(in srgb, var(--accent), transparent 65%);
     transition: transform 0.15s, box-shadow 0.15s;
 }
 
@@ -4105,4 +4102,16 @@ body {
         max-width: 100%;
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     }
+}
+
+.pill-button.mini {
+    padding: 4px 10px;
+    font-size: 10px;
+    height: auto;
+}
+}
+
+.hidden,
+[hidden] {
+    display: none !important;
 }
