@@ -65,13 +65,6 @@ const Playlist = (function() {
         return `<div class="playlist-collage">${cells}</div>`;
     }
 
-    function calculateItemsPerRow(itemWidth = 200, gap = 24, padding = 80) {
-        // Shared logic with renderer.js to ensure consistent dashboard layout
-        const scale = (typeof Theme !== 'undefined' && typeof Theme.getZoomScale === 'function') ? Theme.getZoomScale() : 1;
-        const availableWidth = (window.innerWidth / scale) - padding;
-        const count = Math.ceil((availableWidth + gap) / (itemWidth + gap)) + 1;
-        return Math.max(8, count);
-    }
 
     return {
         init: function(options) {
@@ -160,7 +153,7 @@ const Playlist = (function() {
             }
 
             // Apply dynamic row limit (subtract 1 for the 'New Playlist' card)
-            const limit = Math.max(1, calculateItemsPerRow() - 1);
+            const limit = Math.max(1, Theme.calculateItemsPerRow() - 1);
             const displayPlaylists = allPlaylists.slice(0, limit);
 
             displayPlaylists.forEach(pl => {
@@ -215,8 +208,8 @@ const Playlist = (function() {
                 strip.innerHTML = '';
 
                 // Apply dynamic row limit (same as recently added albums)
-                const limit = calculateItemsPerRow();
-                const displayPlaylists = discoveries.slice(0, limit);
+                const limit = Theme.calculateItemsPerRow();
+                const displayPlaylists = discoveryPlaylists.slice(0, limit);
 
                 displayPlaylists.forEach(pl => {
                     const card = document.createElement('div');

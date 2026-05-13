@@ -215,7 +215,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     allLikedTracksCache = [];
                     updateLikeButtonState();
 
-                    renderPlaylistsStrip();
+                    Playlist.renderUserStrip();
                     fetchPlaylists(); // Will trigger local fallback or empty render
 
                     if (settingsView && settingsView.classList.contains('active')) renderSettingsPanel();
@@ -1937,15 +1937,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Helper to calculate how many items fit in a horizontal row
-    function calculateItemsPerRow(itemWidth = 200, gap = 24, padding = 80) {
-        const scale = typeof Theme.getZoomScale === 'function' ? Theme.getZoomScale() : 1;
-        // Adjust the available width based on the internal application zoom
-        const availableWidth = (window.innerWidth / scale) - padding;
-        // Use ceil and add 1 to ensure we always overflow slightly into the right-side fade mask
-        const count = Math.ceil((availableWidth + gap) / (itemWidth + gap)) + 1;
-        return Math.max(8, count);
-    }
+    // Refresh home grid on resize to adjust item counts
 
     // Refresh home grid on resize to adjust item counts
     window.addEventListener('resize', () => {
@@ -2182,7 +2174,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         albumsArray.sort((a, b) => b.addedAt - a.addedAt);
 
         // Calculate dynamic count based on screen width (min 8)
-        const count = calculateItemsPerRow();
+        const count = Theme.calculateItemsPerRow();
         const recentAlbums = albumsArray.slice(0, count);
         recentAlbums.forEach(albumInfo => {
             recentList.appendChild(createAlbumCard(albumInfo));
@@ -2194,12 +2186,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderRecentArtists();
         }
 
-        if (typeof renderDiscoveryStrip === 'function') {
-            renderDiscoveryStrip();
-        }
-
-        if (typeof renderPlaylistsStrip === 'function') {
-            renderPlaylistsStrip();
+        if (typeof Playlist !== 'undefined') {
+            Playlist.renderDiscoverStrip();
+            Playlist.renderUserStrip();
         }
     }
 
@@ -3249,9 +3238,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    async function renderDiscoveryStrip() {
-        return Playlist.renderDiscoverStrip();
-    }
 
 
     // ΓöÇΓöÇ Add-to-playlist dropdown ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -3389,7 +3375,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        const count = calculateItemsPerRow();
+        const count = Theme.calculateItemsPerRow();
         const topArtists = recentNames.slice(0, count);
         topArtists.forEach(artistName => {
             const card = document.createElement('div');
@@ -3866,7 +3852,99 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // ΓöÇΓöÇ Initial State Restoration ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // --- Module Initializations (Must happen before first render) ---
+    Search.init();
+    Theme.init({ serverBaseUrl });
+    Stats.init({ serverBaseUrl });
+    
+    Metadata.init({
+        serverBaseUrl,
+        selectors: {
+            healthCheck: {
+                container: 'check-progress-container',
+                status: 'check-progress-status',
+                start: 'check-metadata-start-btn'
+            }
+        },
+        callbacks: {
+            onLibraryRefresh: async () => await initializeMusicLibrary(),
+            onAlbumRefresh: async (albumName) => {
+                const album = albumsData[albumName];
+                if (album) openAlbumView(album, false);
+            },
+            getSharedCoverUrl: (path, artist, album) => getSharedCoverUrl(path, artist, album)
+        }
+    });
+
+    Playlist.init({
+        serverBaseUrl,
+        currentUser,
+        selectors: {
+            hero: 'playlist-hero'
+        },
+        callbacks: {
+            onNavigate: (playlist) => openPlaylistView(playlist),
+            onPlay: (track, list, index) => Playback.playTrack(track, list, index),
+            onDelete: (id) => deletePlaylist(id),
+            onRenamed: (id, name) => renamePlaylist(id, name)
+        }
+    });
+
+    Lyrics.init({
+        container: lyricsContainer,
+        immersiveView: immersiveView,
+        actionBar: document.getElementById('lyrics-action-bar')
+    });
+
+    Playback.init({
+        onTrackChange: (track) => {
+            updateNowPlayingUI(track);
+            if (typeof updateImmersiveUpNext === 'function') updateImmersiveUpNext();
+            _fillInfiniteBuffer();
+        },
+        onPlayStateChange: (isPlaying) => {
+            const icon = document.getElementById('play-icon');
+            const btn = document.getElementById('play-pause-btn');
+
+            if (isPlaying) {
+                if (icon) icon.setAttribute('d', 'M6 19h4V5H6v14zm8-14v14h4V5h-4z');
+                if (btn) btn.title = 'Pause';
+            } else {
+                if (icon) icon.setAttribute('d', 'M8 5v14l11-7z');
+                if (btn) btn.title = 'Play';
+            }
+
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+            }
+        },
+        onProgress: (seek, duration) => {
+            if (!isDraggingScrubber) {
+                const percent = (seek / duration) * 100;
+                progressFill.style.width = `${isFinite(percent) ? percent : 0}%`;
+                currentTimeEl.textContent = formatTime(seek);
+                totalTimeEl.textContent = formatTime(duration);
+
+                // Sync Lyrics
+                Lyrics.sync();
+
+                // Update mobile player bar progress
+                const playerBar = document.querySelector('.player-bar');
+                if (playerBar && window.innerWidth <= 768) {
+                    playerBar.style.setProperty('--player-progress', `${percent}%`);
+                }
+            }
+        },
+        onQueueUpdate: () => {
+            if (queueView && queueView.classList.contains('active')) renderQueueView();
+            updateImmersiveUpNext();
+        },
+        onQueueEnd: () => {
+            _fillInfiniteBuffer();
+        }
+    });
+
+    // --- Initial State Restoration ---
     try {
         await Promise.all([
             fetchPlaylists(),
@@ -3926,94 +4004,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.splitArtists = splitArtists;
         window.getSharedCoverUrl = getSharedCoverUrl;
 
-        // Initialize modules
-        Search.init();
-        Theme.init({ serverBaseUrl });
-        Stats.init({ serverBaseUrl });
-        Metadata.init({
-            serverBaseUrl,
-            selectors: {
-                healthCheck: {
-                    container: 'check-progress-container',
-                    status: 'check-progress-status',
-                    start: 'check-metadata-start-btn'
-                }
-            },
-            callbacks: {
-                onLibraryRefresh: async () => await initializeMusicLibrary(),
-                onAlbumRefresh: async (albumName) => {
-                    const album = albumsData[albumName];
-                    if (album) openAlbumView(album, false);
-                },
-                getSharedCoverUrl: (path, artist, album) => getSharedCoverUrl(path, artist, album)
-            }
-        });
-        Playlist.init({
-            serverBaseUrl,
-            currentUser,
-            selectors: {
-                hero: 'playlist-hero'
-            },
-            callbacks: {
-                onNavigate: (playlist) => openPlaylistView(playlist),
-                onPlay: (track, list, index) => Playback.playTrack(track, list, index),
-                onDelete: (id) => deletePlaylist(id),
-                onRenamed: (id, name) => renamePlaylist(id, name)
-            }
-        });
-        Lyrics.init({
-            container: lyricsContainer,
-            immersiveView: immersiveView,
-            actionBar: document.getElementById('lyrics-action-bar')
-        });
         initThemesView();
-        Playback.init({
-            onTrackChange: (track) => {
-                updateNowPlayingUI(track);
-                if (typeof updateImmersiveUpNext === 'function') updateImmersiveUpNext();
-                _fillInfiniteBuffer();
-            },
-            onPlayStateChange: (isPlaying) => {
-                const icon = document.getElementById('play-icon');
-                const btn = document.getElementById('play-pause-btn');
-
-                if (isPlaying) {
-                    if (icon) icon.setAttribute('d', 'M6 19h4V5H6v14zm8-14v14h4V5h-4z');
-                    if (btn) btn.title = 'Pause';
-                } else {
-                    if (icon) icon.setAttribute('d', 'M8 5v14l11-7z');
-                    if (btn) btn.title = 'Play';
-                }
-
-                if ('mediaSession' in navigator) {
-                    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-                }
-            },
-            onProgress: (seek, duration) => {
-                if (!isDraggingScrubber) {
-                    const percent = (seek / duration) * 100;
-                    progressFill.style.width = `${isFinite(percent) ? percent : 0}%`;
-                    currentTimeEl.textContent = formatTime(seek);
-                    totalTimeEl.textContent = formatTime(duration);
-
-                    // Sync Lyrics
-                    Lyrics.sync();
-
-                    // Update mobile player bar progress
-                    const playerBar = document.querySelector('.player-bar');
-                    if (playerBar && window.innerWidth <= 768) {
-                        playerBar.style.setProperty('--player-progress', `${percent}%`);
-                    }
-                }
-            },
-            onQueueUpdate: () => {
-                if (queueView && queueView.classList.contains('active')) renderQueueView();
-                updateImmersiveUpNext();
-            },
-            onQueueEnd: () => {
-                _fillInfiniteBuffer();
-            }
-        });
 
         // Initialize UI states from module
         shuffleBtn.classList.toggle('toggle-active', Playback.isShuffleActive);

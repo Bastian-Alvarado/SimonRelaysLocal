@@ -190,6 +190,13 @@ const Theme = (function () {
             return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-zoom')) || 1;
         },
 
+        calculateItemsPerRow: function (itemWidth = 200, gap = 24, padding = 80) {
+            const scale = this.getZoomScale();
+            const availableWidth = (window.innerWidth / scale) - padding;
+            const count = Math.ceil((availableWidth + gap) / (itemWidth + gap)) + 1;
+            return Math.max(8, count);
+        },
+
         setZoom: function (level) {
             const zoomScale = parseFloat(level) / 100;
             document.documentElement.style.setProperty('--app-zoom', zoomScale);

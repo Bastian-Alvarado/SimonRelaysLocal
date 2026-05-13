@@ -109,6 +109,21 @@ const Playback = (() => {
             artwork: artwork
         });
 
+        // Update Position State (Duration/Seek)
+        if ('setPositionState' in navigator.mediaSession) {
+            const dur = Playback.duration;
+            const pos = Playback.currentTime;
+            if (isFinite(dur) && dur > 0 && isFinite(pos)) {
+                try {
+                    navigator.mediaSession.setPositionState({
+                        duration: dur,
+                        playbackRate: 1,
+                        position: pos
+                    });
+                } catch (e) { console.warn('[Audio] MediaSession setPositionState failed', e); }
+            }
+        }
+
         navigator.mediaSession.setActionHandler('play', () => Playback.resume());
         navigator.mediaSession.setActionHandler('pause', () => Playback.pause());
         navigator.mediaSession.setActionHandler('previoustrack', () => Playback.prev());
@@ -250,16 +265,35 @@ const Playback = (() => {
                     if (this !== currentHowl) return;
                     isPlayingState = true;
                     callbacks.onPlayStateChange?.(true);
+                    
+                    if ('mediaSession' in navigator) {
+                        navigator.mediaSession.playbackState = 'playing';
+                    }
+
                     if (this._needsFadeIn) {
                         this.fade(0, lastVolume, CROSSFADE_DURATION);
                         this._needsFadeIn = false;
                     }
                 });
                 
-                currentHowl.on('pause', () => { if (currentHowl && !currentHowl.playing()) { isPlayingState = false; callbacks.onPlayStateChange?.(false); } });
+                currentHowl.on('pause', () => { 
+                    if (currentHowl && !currentHowl.playing()) { 
+                        isPlayingState = false; 
+                        callbacks.onPlayStateChange?.(false); 
+                        if ('mediaSession' in navigator) {
+                            navigator.mediaSession.playbackState = 'paused';
+                        }
+                    } 
+                });
                 currentHowl.on('end', () => { if (currentHowl && !currentHowl.playing()) Playback.next(true); });
+                currentHowl.on('load', () => {
+                    if (currentHowl && currentHowl._trackRef && currentHowl._trackRef.url === track.url) {
+                        updateMediaSession(track);
+                    }
+                });
 
                 currentHowl._needsFadeIn = true;
+                currentHowl._trackRef = track; // Ensure reference for load callback
                 
                 // CRITICAL: Call play() synchronously to maintain background audio privileges on mobile.
                 currentHowl.play();
@@ -319,8 +353,7 @@ const Playback = (() => {
                         html5: true,
                         format: ['mp3', 'flac', 'm4a', 'wav'],
                         autoplay: false,
-                        volume: 0,
-                        preload: false // CRITICAL: Disable preloading in HTML5 mode to prevent browser suspension
+                        preload: true
                     });
                     nextHowl._trackRef = nextTrack;
                 }
@@ -337,6 +370,9 @@ const Playback = (() => {
                 // Force state update in case Howler event is delayed or suppressed
                 isPlayingState = false;
                 callbacks.onPlayStateChange?.(false);
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = 'paused';
+                }
             }
         },
         resume() { 
@@ -344,6 +380,9 @@ const Playback = (() => {
                 currentHowl.play();
                 isPlayingState = true;
                 callbacks.onPlayStateChange?.(true);
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = 'playing';
+                }
             }
         },
 
