@@ -11,6 +11,7 @@ const Playback = (() => {
     let crossfadeTimeout = null;
     let _lastSeekTime = 0;
     let CROSSFADE_DURATION = parseInt(localStorage.getItem('crossfadeDuration')) || 5000;
+    let isCrossfadeEnabled = (localStorage.getItem('crossfadeEnabled') !== 'false'); // Default to true
     let lastVolume = parseFloat(localStorage.getItem('volume')) || 0.7;
 
     // --- Queue State ---
@@ -55,7 +56,7 @@ const Playback = (() => {
             }
 
             // 2. Crossfade trigger
-            if (CROSSFADE_DURATION > 0 && duration > 10 && seek > 10 && remain > 0 && remain <= (CROSSFADE_DURATION / 1000) && !crossfadeTimeout) {
+            if (isCrossfadeEnabled && CROSSFADE_DURATION > 0 && duration > 10 && seek > 10 && remain > 0 && remain <= (CROSSFADE_DURATION / 1000) && !crossfadeTimeout) {
                 console.log('[Audio] Crossfade threshold reached. Pre-starting next track...');
                 crossfadeTimeout = true;
                 Playback.next(true); // true = auto-advance
@@ -238,9 +239,13 @@ const Playback = (() => {
                     
                     // Crossfade out existing
                     const oldHowl = currentHowl;
-                    const fadeDuration = CROSSFADE_DURATION;
-                    oldHowl.fade(oldHowl.volume(), 0, fadeDuration);
-                    setTimeout(() => { if (oldHowl !== currentHowl) oldHowl.unload(); }, fadeDuration + 500);
+                    const fadeDuration = isCrossfadeEnabled ? CROSSFADE_DURATION : 0;
+                    if (fadeDuration > 0) {
+                        oldHowl.fade(oldHowl.volume(), 0, fadeDuration);
+                        setTimeout(() => { if (oldHowl !== currentHowl) oldHowl.unload(); }, fadeDuration + 500);
+                    } else {
+                        oldHowl.unload();
+                    }
                 }
 
                 globalPlayingTrack = track;
@@ -271,7 +276,12 @@ const Playback = (() => {
                     }
 
                     if (this._needsFadeIn) {
-                        this.fade(0, lastVolume, CROSSFADE_DURATION);
+                        const fadeDuration = isCrossfadeEnabled ? CROSSFADE_DURATION : 0;
+                        if (fadeDuration > 0) {
+                            this.fade(0, lastVolume, fadeDuration);
+                        } else {
+                            this.volume(lastVolume);
+                        }
                         this._needsFadeIn = false;
                     }
                 });
@@ -469,11 +479,6 @@ const Playback = (() => {
             return repeatMode;
         },
 
-        setCrossfadeDuration(ms) {
-            CROSSFADE_DURATION = ms;
-            localStorage.setItem('crossfadeDuration', ms);
-        },
-
         addToQueue(track) {
             userQueue.push(track);
             callbacks.onQueueUpdate?.(userQueue);
@@ -490,14 +495,13 @@ const Playback = (() => {
                     if (realIdx !== -1) {
                         currentPlaylistContext.splice(realIdx, 1);
                         
-                        // If we removed a track before the current one (shouldn't happen with upcoming but just in case)
+                        // If we removed a track before the current one
                         if (realIdx < currentTrackIndex) currentTrackIndex--;
 
                         if (isShuffleActive) {
                             const sIdx = shuffledIndices.indexOf(realIdx);
                             if (sIdx !== -1) shuffledIndices.splice(sIdx, 1);
                             shuffledIndices = shuffledIndices.map(i => i > realIdx ? i - 1 : i);
-                            // If we removed the current shuffle item (shouldn't happen), currentShufflePointer stays same
                         }
                     }
                 }
@@ -520,9 +524,18 @@ const Playback = (() => {
 
         setCrossfadeDuration(ms) {
             CROSSFADE_DURATION = ms;
+            localStorage.setItem('crossfadeDuration', ms);
             console.log(`[Audio] Crossfade duration set to ${ms}ms`);
         },
 
+        toggleCrossfade(enabled) {
+            isCrossfadeEnabled = enabled;
+            localStorage.setItem('crossfadeEnabled', enabled);
+            console.log(`[Audio] Crossfade ${enabled ? 'enabled' : 'disabled'}`);
+            return isCrossfadeEnabled;
+        },
+
+        get isCrossfadeEnabled() { return isCrossfadeEnabled; },
         get currentPlaylistContext() { return currentPlaylistContext; },
         get repeatMode() { return repeatMode; },
         get isShuffleActive() { return isShuffleActive; },

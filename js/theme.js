@@ -13,7 +13,8 @@ const Theme = (function () {
         serverBaseUrl: '',
         defaultAccent: '#f43f5e',
         defaultBlob1: '#e11d48',
-        defaultBlob2: '#f43f5e'
+        defaultBlob2: '#f43f5e',
+        customAccent: localStorage.getItem('customAccentColor') || '#f43f5e'
     };
 
     // DOM Refs for crossfade
@@ -69,10 +70,25 @@ const Theme = (function () {
 
             if (profile === 'simon_default') {
                 this.resetToDefaults();
+            } else if (profile === 'custom') {
+                this.applyCustomColor(config.customAccent);
             } else {
                 // If RGB is selected, it will update on the next track change or manually
                 console.log('[Theme] Switched to RGB mode');
             }
+        },
+
+        applyCustomColor: function (hex) {
+            if (!hex) return;
+            config.customAccent = hex;
+            localStorage.setItem('customAccentColor', hex);
+            
+            const root = document.documentElement;
+            root.style.setProperty('--accent', hex);
+            root.style.setProperty('--blob-1-color', hex);
+            root.style.setProperty('--blob-2-color', hex);
+            root.style.setProperty('--gradient-1', hex);
+            root.style.setProperty('--gradient-2', hex);
         },
 
         getProfile: () => currentProfile,
@@ -158,6 +174,9 @@ const Theme = (function () {
                     root.style.setProperty('--blob-2-color', blobColor);
                     root.style.setProperty('--gradient-1', blobColor);
                     root.style.setProperty('--gradient-2', accentColor);
+                } else if (currentProfile === 'custom') {
+                    // In custom mode, we keep the user's color but still update player bar
+                    // applyCustomColor was already called or is handled by the color picker
                 }
             };
         },

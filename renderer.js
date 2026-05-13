@@ -1,6 +1,7 @@
-// serverBaseUrl is now managed by the API module (js/api.js)
+const DEFAULT_SERVER_URL = (window.location.protocol.startsWith('http') && window.location.hostname !== 'localhost' && !window.location.hostname.startsWith('127.')) 
+    ? window.location.origin 
+    : 'http://localhost:3000';
 const serverBaseUrl = API.getBaseUrl();
-const DEFAULT_SERVER_URL = 'https://localhost:3000'; // Keep for legacy refs if any
 
 const deviceId = localStorage.getItem('deviceId') || crypto.randomUUID();
 localStorage.setItem('deviceId', deviceId);
@@ -643,10 +644,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Settings Panel Logic
-    function openSettings(push = true) {
-        if (push) navigateTo('settings');
+    function openSettings(push = true, targetTab = 'all') {
+        if (push) navigateTo('settings', { tab: targetTab });
         hideOverlays('settings'); // Close other overlays first
-        renderSettingsPanel();
+        renderSettingsPanel(targetTab);
         settingsView.classList.remove('hidden');
         settingsView.classList.add('active');
         if (settingsBtn) settingsBtn.classList.add('settings-btn-active');
@@ -921,14 +922,82 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
     // ΓöÇΓöÇ Settings Panel Renderer ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    function renderSettingsPanel() {
+    function renderSettingsPanel(activeTab = null) {
         const body = settingsView.querySelector('.settings-body');
-        if (!body) return;
+        const header = settingsView.querySelector('.settings-header');
+        if (!body || !header) return;
 
         const currentCustomUrl = localStorage.getItem('serverUrl') || '';
 
+        // Reset search and tabs on open if needed, or keep last state
+        const searchInput = header.querySelector('#settings-search-input');
+        const tabs = header.querySelectorAll('.settings-tab');
+        
+        // If a targetTab is passed, activate it
+        if (activeTab) {
+            tabs.forEach(t => {
+                t.classList.toggle('active', t.dataset.tab === activeTab);
+            });
+            if (searchInput) searchInput.value = ''; // Clear search when switching specifically to a tab
+        }
+
+        let currentTab = header.querySelector('.settings-tab.active')?.dataset.tab || 'all';
+        let searchQuery = searchInput?.value.toLowerCase() || '';
+
         body.innerHTML = `
-            <div class="settings-section">
+            <div class="settings-section" data-category="appearance">
+                <div class="settings-section-title">Themes</div>
+                <div class="settings-themes-grid">
+                    <!-- Simon Default Card -->
+                    <div class="theme-card ${Theme.getProfile() === 'simon_default' ? 'active' : ''}" data-theme="simon_default">
+                        <div class="theme-preview" style="background: #f43f5e;">
+                            <span>Classic</span>
+                        </div>
+                        <div class="theme-info">
+                            <h4>Simon Default</h4>
+                            <p>The signature aesthetic with fixed rose-red accents.</p>
+                        </div>
+                    </div>
+                    <!-- RGB Card -->
+                    <div class="theme-card ${Theme.getProfile() === 'rgb' ? 'active' : ''}" data-theme="rgb">
+                        <div class="theme-preview" style="background: linear-gradient(45deg, #ff0000, #00ff00, #0000ff);">
+                            <span>RGB</span>
+                        </div>
+                        <div class="theme-info">
+                            <h4>Dynamic Engine</h4>
+                            <p>Reactive lighting that shifts with your music.</p>
+                        </div>
+                    </div>
+                    <!-- Custom Card -->
+                    <div class="theme-card ${Theme.getProfile() === 'custom' ? 'active' : ''}" data-theme="custom">
+                        <div class="theme-preview custom-preview" style="background: ${localStorage.getItem('customAccentColor') || '#f43f5e'}; position: relative;">
+                            <span>Custom</span>
+                            <input type="color" id="custom-theme-picker" value="${localStorage.getItem('customAccentColor') || '#f43f5e'}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;">
+                        </div>
+                        <div class="theme-info">
+                            <h4>Personalized</h4>
+                            <p>Manually select your favorite accent color.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section" data-category="appearance">
+                <div class="settings-section-title">Interface</div>
+                <div class="settings-row">
+                    <div class="settings-row-info">
+                        <div class="settings-row-label">UI Scaling</div>
+                        <div class="settings-row-sub">Adjust the size of the interface. Current: <span id="setting-zoom-value" style="color:var(--accent); font-weight:600;">${localStorage.getItem('zoomLevel') || '100'}%</span></div>
+                    </div>
+                    <div class="settings-input-group zoom-slider-group">
+                        <span class="zoom-min-label">50%</span>
+                        <input id="setting-zoom-slider" type="range" min="50" max="150" step="5" value="${localStorage.getItem('zoomLevel') || '100'}" class="settings-range-input">
+                        <span class="zoom-max-label">150%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section" data-category="audio">
                 <div class="settings-section-title">Audio Quality</div>
                 <div class="settings-row" style="flex-direction: row; flex-wrap: wrap; gap: 24px;">
                     <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 12px;">
@@ -958,7 +1027,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
             </div>
 
-            <div class="settings-section">
+            <div class="settings-section" data-category="network">
                 <div class="settings-section-title">Network</div>
                 <div class="settings-row">
                     <div class="settings-row-info">
@@ -975,7 +1044,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
 
 
-            <div class="settings-section">
+            <div class="settings-section" data-category="cloud">
                 <div class="settings-section-title">Cloud Library</div>
                 <div class="settings-row">
                     <div class="settings-row-info">
@@ -990,12 +1059,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
             </div>
 
-            <div class="settings-section">
+            <div class="settings-section" data-category="audio">
                 <div class="settings-section-title">Playback</div>
-                <div class="settings-row">
+                <div class="settings-row" style="flex-direction: row; justify-content: space-between; align-items: center;">
+                    <div class="settings-row-info">
+                        <div class="settings-row-label">Enable Crossfade</div>
+                        <div class="settings-row-sub">Overlap songs for a seamless gapless transition.</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="setting-crossfade-toggle" ${Playback.isCrossfadeEnabled ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="crossfade-duration-row" class="settings-row" style="${Playback.isCrossfadeEnabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
                     <div class="settings-row-info">
                         <div class="settings-row-label">Crossfade Duration</div>
-                        <div class="settings-row-sub">Seamlessly transition between tracks. Current: <span id="setting-crossfade-value" style="color:var(--accent); font-weight:600;">${Playback.crossfadeDuration / 1000}s</span></div>
+                        <div class="settings-row-sub">Overlap time. Current: <span id="setting-crossfade-value" style="color:var(--accent); font-weight:600;">${Playback.crossfadeDuration / 1000}s</span></div>
                     </div>
                     <div class="settings-input-group zoom-slider-group">
                         <span class="zoom-min-label">0s</span>
@@ -1005,15 +1084,116 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
             </div>
 
+            <div class="settings-section" data-category="account">
+                <div class="settings-section-title">Account</div>
+                <div class="settings-row">
+                    <div class="settings-profile-info" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <div class="settings-row-info">
+                            <div class="settings-row-label">Current Session</div>
+                            <div class="settings-row-sub">You are currently using the local library.</div>
+                        </div>
+                        <button id="signout-btn" class="settings-reset-btn">Sign Out</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="settings-no-results" style="display: none; text-align: center; padding: 40px; color: var(--text-secondary);">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 16px; opacity: 0.2;">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <div style="font-weight: 700; color: white; margin-bottom: 4px;">No settings found</div>
+                <div style="font-size: 13px;">Try a different search term</div>
+            </div>
         `;
 
-        // Audio Quality Handlers
+        // Theme Handlers
+        const themeCards = body.querySelectorAll('.theme-card');
+        themeCards.forEach(card => {
+            card.addEventListener('click', (e) => {
+                // If clicked the picker input directly, let it happen
+                if (e.target.id === 'custom-theme-picker') return;
+
+                const themeId = card.dataset.theme;
+                Theme.setProfile(themeId);
+                
+                // Update UI state
+                themeCards.forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+
+                // If Custom, trigger picker
+                if (themeId === 'custom') {
+                    const picker = card.querySelector('#custom-theme-picker');
+                    if (picker) picker.showPicker ? picker.showPicker() : picker.click();
+                }
+
+                // If RGB, trigger visual update
+                if (themeId === 'rgb' && Playback.currentTrack) {
+                    Theme.updateNowPlayingVisuals(Playback.currentTrack, currentActiveCoverUrl);
+                }
+            });
+        });
+
+        const customPicker = body.querySelector('#custom-theme-picker');
+        const customPreview = body.querySelector('.custom-preview');
+        if (customPicker) {
+            customPicker.addEventListener('input', (e) => {
+                const color = e.target.value;
+                Theme.applyCustomColor(color);
+                if (customPreview) customPreview.style.background = color;
+            });
+            // Also update on change to ensure final value is set
+            customPicker.addEventListener('change', (e) => {
+                Theme.applyCustomColor(e.target.value);
+            });
+        }
+
+        // Appearance Handlers
+        const zoomSlider = document.getElementById('setting-zoom-slider');
+        const zoomValue = document.getElementById('setting-zoom-value');
+        if (zoomSlider && zoomValue) {
+            zoomSlider.addEventListener('input', (e) => {
+                const val = e.target.value;
+                zoomValue.textContent = val + '%';
+                Theme.setZoom(val);
+                
+                // Debounced grid refresh
+                setTimeout(() => {
+                    if (typeof renderHomeGrid === 'function') renderHomeGrid();
+                }, 100);
+            });
+        }
         const qualityOptions = [
             { value: 'original', label: 'Original' },
             { value: '320', label: '320kbps' },
             { value: '192', label: '192kbps' },
             { value: '128', label: '128kbps' }
         ];
+
+        // Playback section handlers
+        const crossfadeToggle = document.getElementById('setting-crossfade-toggle');
+        const crossfadeRow = document.getElementById('crossfade-duration-row');
+        const crossfadeSlider = document.getElementById('setting-crossfade-duration');
+        const crossfadeValue = document.getElementById('setting-crossfade-value');
+
+        if (crossfadeToggle) {
+            crossfadeToggle.addEventListener('change', (e) => {
+                const enabled = e.target.checked;
+                Playback.toggleCrossfade(enabled);
+                if (crossfadeRow) {
+                    crossfadeRow.style.opacity = enabled ? '1' : '0.5';
+                    crossfadeRow.style.pointerEvents = enabled ? 'auto' : 'none';
+                }
+            });
+        }
+
+        if (crossfadeSlider && crossfadeValue) {
+            crossfadeSlider.addEventListener('input', (e) => {
+                const secs = parseInt(e.target.value);
+                Playback.setCrossfadeDuration(secs * 1000);
+                crossfadeValue.textContent = secs + 's';
+            });
+        }
 
         function setupCustomSelect(inputId, dropdownId, storageKey) {
             const input = document.getElementById(inputId);
@@ -1060,29 +1240,75 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupCustomSelect('setting-stream-quality', 'setting-stream-quality-dropdown', 'streamQuality');
         setupCustomSelect('setting-download-quality', 'setting-download-quality-dropdown', 'downloadQuality');
 
-        // Network section handlers
+        // --- Tab and Search Logic ---
+        const sections = body.querySelectorAll('.settings-section');
+        const noResults = body.querySelector('#settings-no-results');
 
-        // Crossfade Handler
-        const crossfadeSlider = document.getElementById('setting-crossfade-duration');
-        const crossfadeValue = document.getElementById('setting-crossfade-value');
-        if (crossfadeSlider && crossfadeValue) {
-            crossfadeSlider.addEventListener('input', (e) => {
-                const secs = parseInt(e.target.value);
-                Playback.setCrossfadeDuration(secs * 1000);
-                localStorage.setItem('crossfadeDuration', secs * 1000);
-                crossfadeValue.textContent = secs + 's';
+        function filterSettings() {
+            let visibleCount = 0;
+            const query = (searchInput?.value || '').toLowerCase().trim();
+            const tab = header.querySelector('.settings-tab.active')?.dataset.tab || 'all';
+
+            sections.forEach(section => {
+                const category = section.dataset.category;
+                const text = section.innerText.toLowerCase();
+                
+                const matchesTab = (tab === 'all' || tab === category);
+                const matchesSearch = (!query || text.includes(query));
+
+                if (matchesTab && matchesSearch) {
+                    section.style.display = 'block';
+                    visibleCount++;
+                } else {
+                    section.style.display = 'none';
+                }
+            });
+
+            if (noResults) {
+                noResults.style.display = visibleCount === 0 ? 'block' : 'none';
+            }
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', filterSettings);
+        }
+
+        tabs.forEach(tabBtn => {
+            tabBtn.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tabBtn.classList.add('active');
+                filterSettings();
+            });
+        });
+
+        // Initialize view
+        filterSettings();
+
+        // Network section handlers
+        const serverUrlInput = document.getElementById('server-url-input');
+        const saveUrlBtn = document.getElementById('server-url-save-btn');
+        const resetUrlBtn = document.getElementById('server-url-reset-btn');
+
+        if (saveUrlBtn && serverUrlInput) {
+            saveUrlBtn.addEventListener('click', () => {
+                const val = serverUrlInput.value.trim().replace(/\/+$/, '');
+                if (val && val !== DEFAULT_SERVER_URL) {
+                    localStorage.setItem('serverUrl', val);
+                } else {
+                    localStorage.removeItem('serverUrl');
+                }
+                if (typeof albumCoverCache !== 'undefined') albumCoverCache.clear();
+                location.reload();
             });
         }
 
-        document.getElementById('server-url-save-btn').addEventListener('click', () => {
-            const val = document.getElementById('server-url-input').value.trim().replace(/\/+$/, '');
-            if (val && val !== DEFAULT_SERVER_URL) localStorage.setItem('serverUrl', val);
-            else localStorage.removeItem('serverUrl');
-            albumCoverCache.clear();
-            location.reload();
-        });
-        const resetBtn = document.getElementById('server-url-reset-btn');
-        if (resetBtn) resetBtn.addEventListener('click', () => { localStorage.removeItem('serverUrl'); albumCoverCache.clear(); location.reload(); });
+        if (resetUrlBtn) {
+            resetUrlBtn.addEventListener('click', () => {
+                localStorage.removeItem('serverUrl');
+                if (typeof albumCoverCache !== 'undefined') albumCoverCache.clear();
+                location.reload();
+            });
+        }
 
         // Local sources: Add folder
 
@@ -1607,23 +1833,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Settings Listeners (Playback & Audio)
-    const crossfadeSlider = document.getElementById('setting-crossfade-duration');
-    const crossfadeValue = document.getElementById('setting-crossfade-value');
-
-    if (crossfadeSlider) {
-        // Initialize from persistent storage or default via module
-        const initialSecs = Playback.crossfadeDuration / 1000;
-        crossfadeSlider.value = initialSecs;
-        crossfadeValue.textContent = initialSecs + 's';
-
-        crossfadeSlider.addEventListener('input', (e) => {
-            const secs = parseInt(e.target.value);
-            Playback.setCrossfadeDuration(secs * 1000);
-            localStorage.setItem('crossfadeDuration', secs * 1000);
-            crossfadeValue.textContent = secs + 's';
-        });
-    }
 
     function updateVolumeVisuals(e) {
         const rect = volumeBarContainer.getBoundingClientRect();
@@ -1731,7 +1940,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             case 'playlist':
                 if (stateData.playlist) openPlaylistView(stateData.playlist, false);
                 break;
-            case 'settings': openSettings(false); break;
+            case 'settings': openSettings(false, stateData.tab || 'all'); break;
             case 'profile':
                 renderProfilePanel();
                 openProfile(false);
@@ -1803,20 +2012,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
 
-    function switchToThemesView(push = true) {
-        if (push) navigateTo('themes');
-        hideOverlays();
-        hideAllViews();
-        const tv = document.getElementById('themes-view');
-        if (tv) {
-            tv.classList.remove('hidden');
-            tv.classList.add('active');
-        }
-        updateThemeUIState();
-    }
-
     function hideAllViews() {
-        const views = ['home-view', 'search-view', 'artist-view', 'album-view', 'playlist-view', 'likes-view', 'history-view', 'downloads-view', 'stats-view', 'profile-view', 'themes-view'];
+        const views = ['home-view', 'search-view', 'artist-view', 'album-view', 'playlist-view', 'likes-view', 'history-view', 'downloads-view', 'stats-view', 'profile-view'];
         views.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -1826,30 +2023,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    function updateThemeUIState() {
-        const profile = Theme.getProfile();
-        const cards = document.querySelectorAll('.theme-card');
-        cards.forEach(c => {
-            c.style.borderColor = 'var(--surface-border)';
-            c.style.borderWidth = '1px';
-            c.style.borderStyle = 'solid';
-            c.style.transform = 'scale(1)';
-        });
 
-        const activeId = profile === 'simon_default' ? 'theme-simon-default' : 'theme-rgb';
-        const activeCard = document.getElementById(activeId);
-        if (activeCard) {
-            activeCard.style.borderColor = 'var(--accent)';
-            activeCard.style.borderWidth = '2px';
-            activeCard.style.transform = 'scale(1.02)';
-        }
-
-        const zoom = localStorage.getItem('zoomLevel') || '100';
-        const slider = document.getElementById('theme-zoom-slider');
-        const label = document.getElementById('zoom-value-label');
-        if (slider) slider.value = zoom;
-        if (label) label.textContent = `${zoom}%`;
-    }
 
     function switchToSearchView(push = true) {
         if (push) navigateTo('search', { query: searchInput.value || (mobileSearchInput ? mobileSearchInput.value : '') });
@@ -1884,38 +2058,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function initThemesView() {
-        const themeDefault = document.getElementById('theme-simon-default');
-        const themeRgb = document.getElementById('theme-rgb');
-        const zoomSlider = document.getElementById('theme-zoom-slider');
-
-        if (themeDefault) {
-            themeDefault.addEventListener('click', () => {
-                Theme.setProfile('simon_default');
-                updateThemeUIState();
-            });
-        }
-
-        if (themeRgb) {
-            themeRgb.addEventListener('click', () => {
-                Theme.setProfile('rgb');
-                // Trigger an update if playing
-                if (Playback.currentTrack) {
-                    Theme.updateNowPlayingVisuals(Playback.currentTrack, currentActiveCoverUrl);
-                }
-                updateThemeUIState();
-            });
-        }
-
-        if (zoomSlider) {
-            zoomSlider.addEventListener('input', (e) => {
-                const val = e.target.value;
-                Theme.setZoom(val);
-                const label = document.getElementById('zoom-value-label');
-                if (label) label.textContent = `${val}%`;
-            });
-        }
-    }
     function switchToStatsView(push = true) {
         if (push) navigateTo('stats');
         hideOverlays();
@@ -3818,13 +3960,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    const sidebarThemesBtn = document.getElementById('sidebar-themes-btn');
-    if (sidebarThemesBtn) {
-        sidebarThemesBtn.addEventListener('click', () => {
-            switchToThemesView();
-            closeSidebar();
-        });
-    }
 
     const sidebarHistoryBtn = document.getElementById('sidebar-history-btn');
     if (sidebarHistoryBtn) {
@@ -4003,8 +4138,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.fetchAndApplyArtistImage = (name, node, xl) => Theme.applyArtistVisuals(name, node, xl);
         window.splitArtists = splitArtists;
         window.getSharedCoverUrl = getSharedCoverUrl;
-
-        initThemesView();
 
         // Initialize UI states from module
         shuffleBtn.classList.toggle('toggle-active', Playback.isShuffleActive);
