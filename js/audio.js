@@ -320,7 +320,7 @@ const Playback = (() => {
                         format: ['mp3', 'flac', 'm4a', 'wav'],
                         autoplay: false,
                         volume: 0,
-                        preload: true
+                        preload: false // CRITICAL: Disable preloading in HTML5 mode to prevent browser suspension
                     });
                     nextHowl._trackRef = nextTrack;
                 }
