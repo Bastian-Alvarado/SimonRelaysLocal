@@ -2431,19 +2431,19 @@ body {
     background-color: white;
     transition: .3s;
     border-radius: 50%;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-input:checked + .toggle-slider {
+input:checked+.toggle-slider {
     background-color: var(--accent);
     border-color: var(--accent);
 }
 
-input:checked + .toggle-slider:before {
+input:checked+.toggle-slider:before {
     transform: translateX(24px);
 }
 
-input:focus + .toggle-slider {
+input:focus+.toggle-slider {
     box-shadow: 0 0 1px var(--accent);
 }
 
@@ -2496,7 +2496,7 @@ input:focus + .toggle-slider {
     color: white;
     text-transform: uppercase;
     letter-spacing: 2px;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .theme-info h4 {
@@ -2511,9 +2511,10 @@ input:focus + .toggle-slider {
     color: var(--text-secondary);
     line-height: 1.4;
 }
-    font-size: 12px;
-    color: var(--text-secondary);
-    font-weight: 500;
+
+font-size: 12px;
+color: var(--text-secondary);
+font-weight: 500;
 }
 
 .settings-active-url span {

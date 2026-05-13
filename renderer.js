@@ -1,5 +1,5 @@
-const DEFAULT_SERVER_URL = (window.location.protocol.startsWith('http') && window.location.hostname !== 'localhost' && !window.location.hostname.startsWith('127.')) 
-    ? window.location.origin 
+const DEFAULT_SERVER_URL = (window.location.protocol.startsWith('http') && window.location.hostname !== 'localhost' && !window.location.hostname.startsWith('127.'))
+    ? window.location.origin
     : 'http://localhost:3000';
 const serverBaseUrl = API.getBaseUrl();
 
@@ -932,7 +932,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Reset search and tabs on open if needed, or keep last state
         const searchInput = header.querySelector('#settings-search-input');
         const tabs = header.querySelectorAll('.settings-tab');
-        
+
         // If a targetTab is passed, activate it
         if (activeTab) {
             tabs.forEach(t => {
@@ -1116,7 +1116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 const themeId = card.dataset.theme;
                 Theme.setProfile(themeId);
-                
+
                 // Update UI state
                 themeCards.forEach(c => c.classList.remove('active'));
                 card.classList.add('active');
@@ -1156,7 +1156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const val = e.target.value;
                 zoomValue.textContent = val + '%';
                 Theme.setZoom(val);
-                
+
                 // Debounced grid refresh
                 setTimeout(() => {
                     if (typeof renderHomeGrid === 'function') renderHomeGrid();
@@ -1252,7 +1252,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             sections.forEach(section => {
                 const category = section.dataset.category;
                 const text = section.innerText.toLowerCase();
-                
+
                 const matchesTab = (tab === 'all' || tab === category);
                 const matchesSearch = (!query || text.includes(query));
 
@@ -2683,7 +2683,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Action buttons: Remove (Playlist/Queue) and Add-to-playlist
             let actionBtnHtml = '';
-            
+
             // ALWAYS show Add-to-playlist button (the +) unless it's a very specific case
             actionBtnHtml += `
                 <button class="add-to-playlist-btn" title="Add to playlist">
@@ -2731,6 +2731,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const offlineIconHtml = `
                 <button class="icon-button offline-status-circle track-offline-btn ${indicatorClass}" 
+                        data-track-url="${track.url}"
+                        data-is-local="${track.isLocal ? 'true' : 'false'}"
+                        data-is-both="${track.isBoth ? 'true' : 'false'}"
                         style="--progress: ${isDownloading ? Math.round(downloadProgress * 100) : (isDownloaded || track.isLocal || track.isBoth ? 100 : 0)}%"
                         title="${indicatorTitle}">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2817,15 +2820,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (statusBtn) {
                 statusBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    const currentIsDownloaded = downloadedTracksMap.has(track.url);
+                    const currentIsDownloading = pendingDownloads.has(track.url);
+
                     if (track.isBoth) {
                         console.log('Track is already synced.');
-                    } else if (isDownloaded) {
+                    } else if (currentIsDownloaded) {
                         if (confirm('Remove this track from offline storage?')) {
                             removeOfflineTrack(track.url);
                         }
                     } else if (track.isLocal) {
                         initiateUpload(track);
-                    } else if (!isDownloading) {
+                    } else if (!currentIsDownloading) {
                         initiateDownload(track);
                     }
                 });
@@ -3666,7 +3672,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 1. Fetch Audio
             const response = await fetch(url);
             if (!response.ok) throw new Error('Network response was not ok');
-            const blob = await response.blob();
+
+            const contentLength = response.headers.get('content-length');
+            const total = parseInt(contentLength, 10);
+            let loaded = 0;
+
+            const reader = response.body.getReader();
+            const chunks = [];
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                loaded += value.length;
+                if (total) {
+                    pendingDownloads.set(track.url, loaded / total);
+                    refreshCurrentView();
+                }
+            }
+
+            const blob = new Blob(chunks, { type: response.headers.get('content-type') || 'audio/mpeg' });
 
             // 2. Fetch Cover (if applicable)
             let coverBlob = null;
@@ -3718,29 +3743,61 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function refreshCurrentView() {
-        // Re-render whatever view is active to update download icons
-        const activeView = document.querySelector('.view.active');
-        if (!activeView) return;
+        // Optimize: instead of fully re-rendering track lists, we update just the icons directly in the DOM.
 
-        if (activeView.id === 'album-view') {
+        // 1. Update all track list buttons
+        const offlineBtns = document.querySelectorAll('.track-offline-btn');
+        offlineBtns.forEach(btn => {
+            const url = btn.getAttribute('data-track-url');
+            if (!url) return;
+
+            const isLocal = btn.getAttribute('data-is-local') === 'true';
+            const isBoth = btn.getAttribute('data-is-both') === 'true';
+
+            const isDownloaded = downloadedTracksMap.has(url);
+            const downloadProgress = pendingDownloads.get(url);
+            const isDownloading = downloadProgress !== undefined;
+            const isUploading = pendingUploads.has(url);
+
+            let indicatorClass = '';
+            let indicatorTitle = '';
+            let progress = 0;
+
+            if (isBoth) {
+                indicatorClass = 'is-both';
+                indicatorTitle = 'Local & Server';
+                progress = 100;
+            } else if (isDownloading) {
+                indicatorClass = 'downloading';
+                progress = Math.round(downloadProgress * 100);
+                indicatorTitle = `Downloading... ${progress}%`;
+            } else if (isUploading) {
+                indicatorClass = 'is-uploading';
+                indicatorTitle = 'Uploading to Server...';
+            } else if (isLocal) {
+                indicatorClass = 'is-local';
+                indicatorTitle = 'Local File (Click to Push to Server)';
+                progress = 100;
+            } else if (isDownloaded) {
+                indicatorClass = 'downloaded';
+                indicatorTitle = 'Available Offline (Click to remove)';
+                progress = 100;
+            } else {
+                indicatorTitle = 'Download for Offline';
+            }
+
+            btn.className = `icon-button offline-status-circle track-offline-btn ${indicatorClass}`;
+            btn.title = indicatorTitle;
+            btn.style.setProperty('--progress', `${progress}%`);
+        });
+
+        // 2. Update album hero download button if album view is active
+        const activeView = document.querySelector('.view.active');
+        if (activeView && activeView.id === 'album-view') {
             const albumName = albumHeroDiv.querySelector('.album-hero-title')?.textContent;
             if (albumName && albumsData[albumName]) {
-                const album = albumsData[albumName];
-                const albumTrackList = activeView.querySelector('.track-list');
-                renderTrackList(album.tracks, albumTrackList, false, null, true, true);
-                updateAlbumHeroOfflineStatus(album);
+                updateAlbumHeroOfflineStatus(albumsData[albumName]);
             }
-        } else if (activeView.id === 'artist-view') {
-            // Difficult to refresh artist view perfectly without data stored globally
-        } else if (activeView.id === 'playlist-view') {
-            const pl = allPlaylists.find(p => p.id === activePlaylistId);
-            if (pl) {
-                const isOwn = currentUser && pl.userId === currentUser.uid;
-                renderTrackList(pl.tracks, playlistTrackList, true, pl.id, isOwn);
-            }
-        } else if (activeView.id === 'search-view') {
-            const query = searchInput.value || (mobileSearchInput ? mobileSearchInput.value : '');
-            if (query) Search.renderSearchResults(query);
         }
 
         // Update Global Player Bar offline status if something is playing
@@ -3991,7 +4048,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     Search.init();
     Theme.init({ serverBaseUrl });
     Stats.init({ serverBaseUrl });
-    
+
     Metadata.init({
         serverBaseUrl,
         selectors: {
