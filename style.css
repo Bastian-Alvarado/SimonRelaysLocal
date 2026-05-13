@@ -3559,8 +3559,8 @@ font-weight: 500;
 
     #shuffle-btn svg,
     #repeat-btn svg {
-        width: 14px;
-        height: 14px;
+        width: 22px;
+        height: 22px;
     }
 
     #shuffle-btn.toggle-active,

@@ -3106,7 +3106,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const storageText = document.getElementById('downloads-storage-text');
             if (storageText) {
                 const count = downloadedTracks.length;
-                storageText.textContent = `${count} track${count !== 1 ? 's' : ''} ┬╖ ${formatBytes(totalBytes)}`;
+                storageText.textContent = `${count} track${count !== 1 ? 's' : ''} • ${formatBytes(totalBytes)}`;
             }
 
             const downloadsView = document.getElementById('downloads-view');
