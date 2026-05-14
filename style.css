@@ -361,10 +361,19 @@ body {
     letter-spacing: -0.5px;
     margin: 0;
     text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .logo-accent {
     color: var(--accent);
+}
+
+.app-logo-icon {
+    height: 1.2em;
+    width: auto;
+    filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 30%, transparent));
 }
 
 .nav-circle-btn {

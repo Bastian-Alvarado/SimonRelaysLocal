@@ -44,6 +44,12 @@ function getSharedCoverUrl(relativePath, artist, album) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // Apply Appearance Preferences
+    if (localStorage.getItem('hideAppIcon') === 'true') {
+        document.querySelectorAll('.app-logo-icon').forEach(icon => {
+            icon.style.display = 'none';
+        });
+    }
 
     // Views
     const homeView = document.getElementById('home-view');
@@ -243,8 +249,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const mobileNavItems = [mobileHomeBtn, mobileSearchBtn, mobileQueueBtn, mobileMenuBtn];
     const mobileSearchInput = document.getElementById('mobile-search-input');
 
-    // Metadata Edit Elements
-    document.getElementById('check-progress-bar');
 
     // ΓöÇΓöÇ Auth Event Listeners ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     if (googleSigninBtn) {
@@ -293,11 +297,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const menuGoArtistBtn = document.getElementById('menu-go-artist-btn');
     const menuGoAlbumBtn = document.getElementById('menu-go-album-btn');
     let contextMenuTrack = null;
-    let currentEditingAlbum = null;
     let currentPlaylistId = null;
     let currentTrackItem = null;
-    let isAlbumMode = false;
-    let newCoverArtBase64 = null;
+    let pendingAddTrack = null;
+    let activePlaylistId = null;
 
     function updateMobileNavActive(activeBtn) {
         mobileNavItems.forEach(btn => {
@@ -329,8 +332,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     let sessionHistory = [];   // up to 50 recently played URLs
     let sessionAffinity = { artists: {}, genres: {} };
     // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    let pendingUploads = new Set();  // url
-    let currentActiveBlobUrl = null;
     let currentActiveCoverUrl = null;
 
     // ΓöÇΓöÇ IndexedDB Configuration (PWA Offline Support) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -984,6 +985,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             <div class="settings-section" data-category="appearance">
                 <div class="settings-section-title">Interface</div>
+                <div class="settings-row" style="flex-direction: row; justify-content: space-between; align-items: center;">
+                    <div class="settings-row-info">
+                        <div class="settings-row-label">Show App Icon</div>
+                        <div class="settings-row-sub">Display the SimonRelays logo icon in the top header.</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="setting-app-icon-toggle" ${localStorage.getItem('hideAppIcon') === 'true' ? '' : 'checked'}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
                 <div class="settings-row">
                     <div class="settings-row-info">
                         <div class="settings-row-label">UI Scaling</div>
@@ -1173,6 +1184,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }, 100);
             });
         }
+        
+        const appIconToggle = document.getElementById('setting-app-icon-toggle');
+        if (appIconToggle) {
+            appIconToggle.addEventListener('change', (e) => {
+                const show = e.target.checked;
+                localStorage.setItem('hideAppIcon', show ? 'false' : 'true');
+                document.querySelectorAll('.app-logo-icon').forEach(icon => {
+                    icon.style.display = show ? '' : 'none';
+                });
+            });
+        }
+
         const qualityOptions = [
             { value: 'original', label: 'Original' },
             { value: '320', label: '320kbps' },
@@ -1607,9 +1630,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const ctx = Playback.currentPlaylistContext;
         const idx = Playback.currentTrackIndex;
 
-        // Only trigger if the total context is small (< 10 items), as requested.
-        // Once triggered, we mark it as _isInfinite so it continues to refill as a rolling buffer.
-        if (ctx.length >= 10 && !ctx._isInfinite) return;
+        // Only trigger if we actually need tracks to maintain the rolling buffer of 10
+        // (Lockout condition removed to allow seamless transition for large albums/playlists)
 
         const remaining = Playback.remainingContextCount;
         const needed = 10 - remaining;
@@ -1831,9 +1853,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Volume Drag and Toggle Logic
-    let lastVolume = 0.7;
-    Playback.setVolume(lastVolume);
-    volumeFill.style.width = '70%';
+    let lastVolume = Playback.volume > 0 ? Playback.volume : 0.7;
     let isDraggingVolume = false;
 
     function setMuteIcon(isMuted) {
@@ -1843,6 +1863,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             muteIcon.innerHTML = `<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>`;
         }
     }
+
+    volumeFill.style.width = `${Playback.volume * 100}%`;
+    if (Playback.volume === 0) setMuteIcon(true);
 
     muteBtn.addEventListener('click', () => {
         if (Playback.volume > 0) {
@@ -2078,8 +2101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         Animations.oneShot(artistView, 'anim-view-enter');
     }
 
-    function switchToPlaylistView(push = true) {
-        if (push) navigateTo('playlist', { playlist: currentActivePlaylist });
+    function switchToPlaylistView() {
         hideOverlays();
         hideAllViews();
         const pv = document.getElementById('playlist-view');
@@ -2200,16 +2222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 
-    // Custom Genre Dropdown Logic
-    const DEFAULT_GENRES = [
-        "Acoustic", "Alternative", "Ambient", "Blues", "Classical", "Country", "Dance",
-        "Electronic", "Folk", "Hip-Hop", "Indie", "Jazz", "Latin", "Lo-Fi", "Metal",
-        "Pop", "R&B", "Rock", "Soul", "Soundtrack", "Trap"
-    ];
-
     // Export necessary helpers for modules
-    window.getSharedCoverUrl = getSharedCoverUrl;
-    window.formatHeroDuration = formatHeroDuration;
     window.saveTrackToIDB = saveTrackToIDB;
     window.deleteTrackFromIDB = deleteTrackFromIDB;
 
@@ -2381,9 +2394,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return `${secs} sec`;
     }
 
-    // Export helpers for modules
-    window.getSharedCoverUrl = getSharedCoverUrl;
-    window.formatHeroDuration = formatHeroDuration;
+
 
     // ΓöÇΓöÇ View Cache (IndexedDB, 15 MB budget, 12-hour TTL, LRU) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const VC_DB_NAME = 'SimonRelaysViewCache';
@@ -2769,23 +2780,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isDownloaded = downloadedTracksMap.has(track.url);
             const downloadProgress = pendingDownloads.get(track.url);
             const isDownloading = downloadProgress !== undefined;
-            const isUploading = pendingUploads.has(track.url);
 
-            // 4-state indicator logic
+            // 3-state indicator logic
             let indicatorClass = '';
             let indicatorTitle = '';
-            if (track.isBoth) {
-                indicatorClass = 'is-both';
-                indicatorTitle = 'Local & Server';
-            } else if (isDownloading) {
+            if (isDownloading) {
                 indicatorClass = 'downloading';
                 indicatorTitle = `Downloading... ${Math.round(downloadProgress * 100)}%`;
-            } else if (isUploading) {
-                indicatorClass = 'is-uploading';
-                indicatorTitle = 'Uploading to Server...';
-            } else if (track.isLocal) {
-                indicatorClass = 'is-local';
-                indicatorTitle = 'Local File (Click to Push to Server)';
             } else if (isDownloaded) {
                 indicatorClass = 'downloaded';
                 indicatorTitle = 'Available Offline (Click to remove)';
@@ -2887,14 +2888,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const currentIsDownloaded = downloadedTracksMap.has(track.url);
                     const currentIsDownloading = pendingDownloads.has(track.url);
 
-                    if (track.isBoth) {
-                        console.log('Track is already synced.');
-                    } else if (currentIsDownloaded) {
+                    if (currentIsDownloaded) {
                         if (confirm('Remove this track from offline storage?')) {
                             removeOfflineTrack(track.url);
                         }
-                    } else if (track.isLocal) {
-                        initiateUpload(track);
                     } else if (!currentIsDownloading) {
                         initiateDownload(track);
                     }
@@ -3843,27 +3840,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isDownloaded = downloadedTracksMap.has(url);
             const downloadProgress = pendingDownloads.get(url);
             const isDownloading = downloadProgress !== undefined;
-            const isUploading = pendingUploads.has(url);
 
             let indicatorClass = '';
             let indicatorTitle = '';
             let progress = 0;
 
-            if (isBoth) {
-                indicatorClass = 'is-both';
-                indicatorTitle = 'Local & Server';
-                progress = 100;
-            } else if (isDownloading) {
+            if (isDownloading) {
                 indicatorClass = 'downloading';
                 progress = Math.round(downloadProgress * 100);
                 indicatorTitle = `Downloading... ${progress}%`;
-            } else if (isUploading) {
-                indicatorClass = 'is-uploading';
-                indicatorTitle = 'Uploading to Server...';
-            } else if (isLocal) {
-                indicatorClass = 'is-local';
-                indicatorTitle = 'Local File (Click to Push to Server)';
-                progress = 100;
             } else if (isDownloaded) {
                 indicatorClass = 'downloaded';
                 indicatorTitle = 'Available Offline (Click to remove)';
@@ -4233,14 +4218,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             initializeMusicLibrary()
         ]);
 
-        // Auto-rescan check (24-hour interval)
-        const lastScanTime = parseInt(localStorage.getItem('lastScanTime') || '0');
-        const now = Date.now();
-        if (lastScanTime > 0 && (now - lastScanTime > 24 * 60 * 60 * 1000)) {
-            console.log('Last scan was over 24 hours ago. Triggering automatic rescan...');
-            // We run it as a floating promise so it doesn't block startup
-            rescanLocalSources().catch(e => console.error('Auto-rescan failed', e));
-        }
 
         // Always start at landing page (Home)
         // Expose UI functions for modular access (js/search.js, etc)

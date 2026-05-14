@@ -9,6 +9,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>SimonRelays</title>
+    <link rel="icon" type="image/svg+xml" href="logo.svg">
     <link rel="manifest" href="manifest.json">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -35,7 +36,9 @@
         <header class="app-header">
             <div class="header-left">
                 <h1 class="logo" id="desktop-sidebar-toggle" style="cursor: pointer; transition: opacity 0.2s;">
-                    Simon<span class="logo-accent">Relays</span></h1>
+                    <img src="logo.svg" alt="Logo" class="app-logo-icon">
+                    <span>Simon<span class="logo-accent">Relays</span></span>
+                </h1>
             </div>
 
             <div class="header-center">
@@ -79,8 +82,10 @@
         <!-- Login Overlay — hidden by default -->
         <div id="login-overlay" class="modal-overlay hidden">
             <div class="modal-content glass-panel login-panel">
-                <h1 class="logo" style="font-size: 32px; margin-bottom: 8px;">Simon<span
-                        class="logo-accent">Relays</span></h1>
+                <h1 class="logo" style="font-size: 32px; margin-bottom: 8px; justify-content: center;">
+                    <img src="logo.svg" alt="Logo" class="app-logo-icon">
+                    <span>Simon<span class="logo-accent">Relays</span></span>
+                </h1>
                 <p class="modal-text" style="margin-bottom: 24px; opacity: 0.7;">Sign in to sync your music and control
                     playback across all your devices.</p>
 
