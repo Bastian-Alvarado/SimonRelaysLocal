@@ -118,13 +118,13 @@ const Search = (() => {
 
         async renderSearchResults(query) {
             const searchEmptyState = document.getElementById('search-empty-state');
-            const albumsData = window.albumsData || {};
-            const allPlaylists = window.allPlaylists || [];
-            const allTracks = window.allTracks || [];
+            const albumsData = State.get('albumsData') || {};
+            const allPlaylists = State.get('allPlaylists') || [];
+            const allTracks = State.get('allTracks') || [];
 
             // Collect unique artists
             const seenArtists = new Set();
-            Object.values(albumsData).forEach(album => {
+            Object.values(State.get('albumsData')).forEach(album => {
                 if (album.artist && album.artist !== 'Unknown Artist') {
                     if (window.splitArtists) {
                         window.splitArtists(album.artist).forEach(a => seenArtists.add(a));
@@ -139,14 +139,14 @@ const Search = (() => {
             const discoveryPlaylists = (typeof Playlist !== 'undefined') ? Playlist.getDiscoveryPlaylists() : [];
             
             const combinedPlaylists = [
-                ...allPlaylists.map(p => ({ ...p, source: 'personal' })),
+                ...State.get('allPlaylists').map(p => ({ ...p, source: 'personal' })),
                 ...discoveryPlaylists.map(p => ({ ...p, source: 'discovery' }))
             ];
 
             const matchingPlaylists = combinedPlaylists.filter(p => p.name.toLowerCase().includes(query));
 
             // Filter tracks
-            const matchingTracks = allTracks.filter(track => {
+            const matchingTracks = State.get('allTracks').filter(track => {
                 const title = ((track.metadata && track.metadata.title) || track.filename).toLowerCase();
                 const artist = ((track.metadata && track.metadata.artist) || '').toLowerCase();
                 const album = ((track.metadata && track.metadata.album) || '').toLowerCase();
@@ -171,7 +171,7 @@ const Search = (() => {
                         .get();
 
                     const globalPlaylists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    const ownIds = new Set(allPlaylists.map(p => p.id));
+                    const ownIds = new Set(State.get('allPlaylists').map(p => p.id));
                     const uniqueGlobal = globalPlaylists.filter(p => !ownIds.has(p.id));
 
                     if (uniqueGlobal.length > 0) {
@@ -195,16 +195,11 @@ const Search = (() => {
             searchArtistList.innerHTML = '';
 
             artists.forEach(artistName => {
-                const row = document.createElement('div');
-                row.className = 'search-result-row';
-                row.innerHTML = `
-                    <div class="artist-card-art search-row-avatar"></div>
-                    <div class="search-row-info">
-                        <div class="search-row-name">${artistName}</div>
-                        <div class="search-row-type">Artist</div>
-                    </div>
-                    <svg class="search-row-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                `;
+                const row = UI.createSearchResultRow({
+                    type: 'Artist',
+                    name: artistName,
+                    avatarHtml: '' // Will be handled by Theme.applyArtistVisuals
+                });
                 Theme.applyArtistVisuals(artistName, row.querySelector('.search-row-avatar'), false);
                 row.addEventListener('click', () => {
                     if (searchInput) searchInput.value = '';
@@ -226,9 +221,6 @@ const Search = (() => {
             searchPlaylistList.innerHTML = '';
 
             playlists.forEach(pl => {
-                const row = document.createElement('div');
-                row.className = 'search-result-row';
-
                 let coverHtml = '';
                 if (pl.customCover) {
                     coverHtml = `<img src="${pl.customCover}" class="search-row-cover-img" alt="">`;
@@ -242,14 +234,13 @@ const Search = (() => {
                 }
 
                 const typeLabel = pl.source === 'discovery' ? 'Discover' : 'Playlist';
-                row.innerHTML = `
-                    <div class="search-row-cover">${coverHtml}</div>
-                    <div class="search-row-info">
-                        <div class="search-row-name">${pl.name}</div>
-                        <div class="search-row-type">${typeLabel} &middot; ${pl.tracks ? pl.tracks.length : 0} track${(pl.tracks && pl.tracks.length !== 1) ? 's' : ''}</div>
-                    </div>
-                    <svg class="search-row-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                `;
+                const row = UI.createSearchResultRow({
+                    type: typeLabel,
+                    name: pl.name,
+                    subtext: `${typeLabel} &middot; ${pl.tracks ? pl.tracks.length : 0} track${(pl.tracks && pl.tracks.length !== 1) ? 's' : ''}`,
+                    coverHtml: coverHtml
+                });
+
                 row.addEventListener('click', () => {
                     if (searchInput) searchInput.value = '';
                     if (window.switchToHomeView) window.switchToHomeView();
@@ -265,8 +256,9 @@ const Search = (() => {
             if (!searchTracksSection || !searchTrackList) return;
             if (tracks.length === 0) { searchTracksSection.classList.add('hidden'); return; }
             searchTracksSection.classList.remove('hidden');
-            if (window.renderTrackList) window.renderTrackList(tracks, searchTrackList);
+            UI.renderTrackList(tracks, searchTrackList);
         },
+
 
         appendGlobalSearchPlaylists(playlists) {
             const searchPlaylistList = document.getElementById('search-playlist-list');
@@ -281,10 +273,6 @@ const Search = (() => {
             searchPlaylistsSection.classList.remove('hidden');
 
             playlists.forEach(pl => {
-                const row = document.createElement('div');
-                row.className = 'search-result-row';
-                row.dataset.global = "true";
-
                 let coverHtml = '';
                 if (pl.customCover) {
                     coverHtml = `<img src="${pl.customCover}" class="search-row-cover-img" alt="">`;
@@ -292,14 +280,14 @@ const Search = (() => {
                     coverHtml = `<div class="search-row-cover-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div>`;
                 }
 
-                row.innerHTML = `
-                    <div class="search-row-cover">${coverHtml}</div>
-                    <div class="search-row-info">
-                        <div class="search-row-name">${pl.name}</div>
-                        <div class="search-row-type">Community Playlist &middot; ${pl.userName || 'Shared'} &middot; ${pl.tracks ? pl.tracks.length : 0} tracks</div>
-                    </div>
-                    <svg class="search-row-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                `;
+                const row = UI.createSearchResultRow({
+                    type: 'Community Playlist',
+                    name: pl.name,
+                    subtext: `Community Playlist &middot; ${pl.userName || 'Shared'} &middot; ${pl.tracks ? pl.tracks.length : 0} tracks`,
+                    coverHtml: coverHtml
+                });
+                row.dataset.global = "true";
+
                 row.addEventListener('click', () => {
                     if (searchInput) searchInput.value = '';
                     if (window.switchToHomeView) window.switchToHomeView();
@@ -310,5 +298,7 @@ const Search = (() => {
         }
     };
 })();
+
+window.Search = Search;
 
 window.Search = Search;

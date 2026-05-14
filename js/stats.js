@@ -84,3 +84,5 @@ const Stats = (function() {
         }
     };
 })();
+
+window.Stats = Stats;

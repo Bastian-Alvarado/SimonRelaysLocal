@@ -156,8 +156,8 @@ const Playback = (() => {
         
         // Reconcile track with master list if qualities are missing (handles stale objects from Likes/History)
         let masterTrack = track;
-        if (!track.qualities && window.allTracks) {
-            const found = window.allTracks.find(t => t.url === track.url);
+        if (!track.qualities && State.get('allTracks')) {
+            const found = State.get('allTracks').find(t => t.url === track.url);
             if (found) masterTrack = found;
         }
 

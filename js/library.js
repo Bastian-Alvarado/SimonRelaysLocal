@@ -318,3 +318,5 @@ const Library = (function() {
         }
     };
 })();
+
+window.Library = Library;

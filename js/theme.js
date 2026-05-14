@@ -253,11 +253,14 @@ const Theme = (function () {
             if (elementNode.classList && (
                 elementNode.classList.contains('artist-card-art') ||
                 elementNode.classList.contains('artist-hero-avatar') ||
-                elementNode.classList.contains('artist-avatar')
+                elementNode.classList.contains('artist-avatar') ||
+                elementNode.classList.contains('artist-grid-avatar')
             )) {
                 targetEl = elementNode;
             } else {
-                targetEl = elementNode.querySelector('.artist-card-art') || elementNode.querySelector('.artist-avatar');
+                targetEl = elementNode.querySelector('.artist-card-art') || 
+                           elementNode.querySelector('.artist-avatar') ||
+                           elementNode.querySelector('.artist-grid-avatar');
             }
 
             if (!targetEl) return;
@@ -310,3 +313,5 @@ const Theme = (function () {
         }
     };
 })();
+
+window.Theme = Theme;

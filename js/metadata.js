@@ -422,29 +422,32 @@ const Metadata = (function() {
             currentTrack = track;
             newCoverArtBase64 = null;
 
+            const modal = getEl(config.selectors.modal);
+            if (modal) {
+                UI.renderEditMetadataModal(modal, track);
+                // After rendering, we MUST re-setup listeners for the new buttons/inputs
+                this.setupEventListeners();
+            }
+
             getEl(config.selectors.title).textContent = "Edit Song Information";
             
             // Toggle visibility
-            getEl(config.selectors.fields.title).closest('.input-group').style.display = 'flex';
-            getEl(config.selectors.fields.year).closest('.input-group').style.display = 'flex';
-            getEl(config.selectors.fields.genre).closest('.input-group').style.display = 'flex';
-            getEl(config.selectors.art.dropzone).closest('.metadata-editor-left').style.display = 'none';
+            const titleGroup = getEl(config.selectors.fields.title).closest('.input-group');
+            const yearGroup = getEl(config.selectors.fields.year).closest('.input-group');
+            const genreGroup = getEl(config.selectors.fields.genre).closest('.input-group');
+            const dropzoneGroup = getEl(config.selectors.art.dropzone).closest('.metadata-editor-left');
+
+            if (titleGroup) titleGroup.style.display = 'flex';
+            if (yearGroup) yearGroup.style.display = 'flex';
+            if (genreGroup) genreGroup.style.display = 'flex';
+            if (dropzoneGroup) dropzoneGroup.style.display = 'flex'; // Song mode still needs art sometimes or we hide it?
             
             const restoreBtn = getEl(config.selectors.buttons.restore);
-            restoreBtn.style.display = 'block';
-            if (track.hasBackup) restoreBtn.classList.remove('hidden');
-            else restoreBtn.classList.add('hidden');
-
-            // Fill values
-            getEl(config.selectors.fields.title).value = (track.metadata && track.metadata.title) ? track.metadata.title : track.filename;
-            getEl(config.selectors.fields.artist).value = (track.metadata && track.metadata.artist) ? track.metadata.artist : '';
-            getEl(config.selectors.fields.album).value = (track.metadata && track.metadata.album) ? track.metadata.album : '';
-            getEl(config.selectors.fields.year).value = (track.metadata && track.metadata.year) ? track.metadata.year : '';
-            
-            const genre = (track.metadata && track.metadata.genre)
-                ? (Array.isArray(track.metadata.genre) ? track.metadata.genre.join(', ') : track.metadata.genre)
-                : '';
-            getEl(config.selectors.fields.genre).value = genre;
+            if (restoreBtn) {
+                restoreBtn.style.display = 'block';
+                if (track.hasBackup) restoreBtn.classList.remove('hidden');
+                else restoreBtn.classList.add('hidden');
+            }
 
             getEl(config.selectors.modal).classList.remove('hidden');
         },
@@ -454,27 +457,39 @@ const Metadata = (function() {
             currentAlbum = albumInfo;
             newCoverArtBase64 = null;
 
+            const modal = getEl(config.selectors.modal);
+            if (modal) {
+                // We use a dummy track object for the template
+                UI.renderEditMetadataModal(modal, { metadata: { artist: albumInfo.artist, album: albumInfo.name } });
+                this.setupEventListeners();
+            }
+
             getEl(config.selectors.title).textContent = "Edit Album Information";
 
             // Toggle visibility
-            getEl(config.selectors.fields.title).closest('.input-group').style.display = 'none';
-            getEl(config.selectors.fields.year).closest('.input-group').style.display = 'none';
-            getEl(config.selectors.fields.genre).closest('.input-group').style.display = 'none';
-            getEl(config.selectors.art.dropzone).closest('.metadata-editor-left').style.display = 'flex';
-            getEl(config.selectors.buttons.restore).style.display = 'none';
+            const titleGroup = getEl(config.selectors.fields.title).closest('.input-group');
+            const yearGroup = getEl(config.selectors.fields.year).closest('.input-group');
+            const genreGroup = getEl(config.selectors.fields.genre).closest('.input-group');
+            const dropzoneGroup = getEl(config.selectors.art.dropzone).closest('.metadata-editor-left');
 
-            // Fill values
-            getEl(config.selectors.fields.artist).value = albumInfo.artist;
-            getEl(config.selectors.fields.album).value = albumInfo.name;
+            if (titleGroup) titleGroup.style.display = 'none';
+            if (yearGroup) yearGroup.style.display = 'none';
+            if (genreGroup) genreGroup.style.display = 'none';
+            if (dropzoneGroup) dropzoneGroup.style.display = 'flex';
+            
+            const restoreBtn = getEl(config.selectors.buttons.restore);
+            if (restoreBtn) restoreBtn.style.display = 'none';
 
             // Show current album cover
             const preview = getEl(config.selectors.art.preview);
-            if (albumInfo.coverTrackPath && config.callbacks.getSharedCoverUrl) {
-                preview.src = config.callbacks.getSharedCoverUrl(albumInfo.coverTrackPath, albumInfo.artist, albumInfo.name);
-                preview.style.display = 'block';
-            } else {
-                preview.src = '';
-                preview.style.display = 'none';
+            if (preview) {
+                if (albumInfo.coverTrackPath && config.callbacks.getSharedCoverUrl) {
+                    preview.src = config.callbacks.getSharedCoverUrl(albumInfo.coverTrackPath, albumInfo.artist, albumInfo.name);
+                    preview.style.display = 'block';
+                } else {
+                    preview.src = '';
+                    preview.style.display = 'none';
+                }
             }
 
             getEl(config.selectors.modal).classList.remove('hidden');
@@ -517,3 +532,5 @@ const Metadata = (function() {
         }
     };
 })();
+
+window.Metadata = Metadata;

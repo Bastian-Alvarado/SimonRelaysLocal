@@ -23,9 +23,9 @@ const Playlist = (function() {
         }
     };
 
-    let allPlaylists = [];
+    // State is now managed via global State module
     let discoveryPlaylists = [];
-    let currentUser = null;
+
 
     const CARD_PLAY_BTN_HTML = `<button class="card-play-btn" title="Play">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
@@ -74,15 +74,15 @@ const Playlist = (function() {
                 selectors: { ...config.selectors, ...options.selectors },
                 callbacks: { ...config.callbacks, ...options.callbacks }
             };
-            currentUser = options.currentUser;
         },
 
         setPlaylists: function(playlists) {
-            allPlaylists = playlists;
+            State.set('allPlaylists', playlists);
         },
 
+
         getPlaylists: function() {
-            return allPlaylists;
+            return State.get('allPlaylists');
         },
 
         getDiscoveryPlaylists: function() {
@@ -90,19 +90,21 @@ const Playlist = (function() {
         },
 
         setUser: function(user) {
-            currentUser = user;
+            State.set('currentUser', user);
         },
+
 
         fetchUserPlaylists: async function() {
             // Firestore or Local Server
-            if (currentUser && window._fbFS) {
+            if (State.get('currentUser') && window._fbFS) {
                 try {
                     const snap = await window._fbFS.collection('playlists')
-                        .where('userId', '==', currentUser.uid)
+                        .where('userId', '==', State.get('currentUser').uid)
                         .orderBy('createdAt', 'desc')
                         .get();
-                    allPlaylists = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    return allPlaylists;
+                    const playlists = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    State.set('allPlaylists', playlists);
+                    return State.get('allPlaylists');
                 } catch (e) {
                     console.error('[Playlist] Cloud fetch failed:', e);
                 }
@@ -110,8 +112,9 @@ const Playlist = (function() {
 
             // Fallback to local API
             try {
-                allPlaylists = await API.getPlaylists();
-                return allPlaylists;
+                const playlists = await API.getPlaylists();
+                State.set('allPlaylists', playlists);
+                return playlists;
             } catch (e) {
                 console.error('[Playlist] Local fetch failed:', e);
                 return [];
@@ -138,7 +141,7 @@ const Playlist = (function() {
             };
             strip.appendChild(newCard);
 
-            if (allPlaylists.length === 0) {
+            if (State.get('allPlaylists').length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'playlists-empty-state';
                 empty.innerHTML = `
@@ -154,12 +157,12 @@ const Playlist = (function() {
 
             // Apply dynamic row limit (subtract 1 for the 'New Playlist' card)
             const limit = Math.max(1, Theme.calculateItemsPerRow() - 1);
-            const displayPlaylists = allPlaylists.slice(0, limit);
+            const displayPlaylists = State.get('allPlaylists').slice(0, limit);
 
             displayPlaylists.forEach(pl => {
                 const card = document.createElement('div');
                 card.className = 'playlist-card';
-                const isOwn = currentUser && pl.userId === currentUser.uid;
+                const isOwn = State.get('currentUser') && pl.userId === State.get('currentUser').uid;
 
                 card.innerHTML = `
                     <div class="card-art-wrapper">
@@ -248,7 +251,7 @@ const Playlist = (function() {
             const view = document.getElementById(config.selectors.view);
             if (!hero || !view) return;
 
-            const isOwn = currentUser && playlist.userId === currentUser.uid;
+            const isOwn = State.get('currentUser') && playlist.userId === State.get('currentUser').uid;
 
             // Update View Background
             let bgUrl = 'none';
@@ -292,11 +295,11 @@ const Playlist = (function() {
                         `<div class="album-hero-title">${playlist.name}</div>`
                     }
                     <div class="album-hero-meta">
-                        ${(playlist.userPhotoURL || (isOwn && currentUser.photoURL)) ?
-                            `<img class="artist-avatar" src="${playlist.userPhotoURL || currentUser.photoURL}" alt="">` :
+                        ${(playlist.userPhotoURL || (isOwn && State.get('currentUser').photoURL)) ?
+                            `<img class="artist-avatar" src="${playlist.userPhotoURL || State.get('currentUser').photoURL}" alt="">` :
                             `<img class="artist-avatar" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIwIDIxdi0yYTRgMCAwIDAtNC00SDhhNCg0IDAgMCAwLTQgNHYyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSI3IiByPSI0Ii8+PC9zdmc+" alt="">`
                         }
-                        <strong>${playlist.userName || (isOwn ? (currentUser.displayName || 'You') : 'Shared')}</strong> \u2022 ${songCountStr}${durationStr}
+                        <strong>${playlist.userName || (isOwn ? (State.get('currentUser').displayName || 'You') : 'Shared')}</strong> \u2022 ${songCountStr}${durationStr}
                     </div>
                     <div class="album-hero-actions">
                         <button class="icon-button play-btn playlist-play-btn" title="Play All" style="width:56px;height:56px;box-shadow:0 8px 16px rgba(0,0,0,0.4);">
@@ -356,3 +359,5 @@ const Playlist = (function() {
         }
     };
 })();
+
+window.Playlist = Playlist;

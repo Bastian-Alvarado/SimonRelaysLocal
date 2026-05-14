@@ -17,17 +17,19 @@
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.4/howler.min.js"></script>
+    <script src="js/state.js"></script>
     <script src="js/api.js"></script>
+    <script src="js/theme.js"></script>
+    <script src="js/animations.js"></script>
     <script src="js/audio.js"></script>
+    <script src="js/router.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/playlist.js"></script>
     <script src="js/search.js"></script>
     <script src="js/lyrics.js"></script>
-    <script src="js/theme.js"></script>
     <script src="js/stats.js"></script>
-    <script src="js/playlist.js"></script>
     <script src="js/metadata.js"></script>
     <script src="js/library.js"></script>
-    <script src="js/animations.js"></script>
-    <script src="js/router.js"></script>
 </head>
 
 <body>
@@ -80,38 +82,7 @@
             </div>
         </header>
 
-        <!-- Login Overlay — hidden by default -->
-        <div id="login-overlay" class="modal-overlay hidden">
-            <div class="modal-content glass-panel login-panel">
-                <h1 class="logo" style="font-size: 32px; margin-bottom: 8px; justify-content: center;">
-                    <img src="logo.svg" alt="Logo" class="app-logo-icon">
-                    <span>Simon<span class="logo-accent">Relays</span></span>
-                </h1>
-                <p class="modal-text" style="margin-bottom: 24px; opacity: 0.7;">Sign in to sync your music and control
-                    playback across all your devices.</p>
-
-                <button id="google-signin-btn" class="modal-btn primary-btn"
-                    style="padding: 14px 28px; font-weight: 700; display: flex; align-items: center; gap: 12px; border-radius: 30px;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                        <path
-                            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                            fill="#4285F4" />
-                        <path
-                            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                            fill="#34A853" />
-                        <path
-                            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
-                            fill="#FBBC05" />
-                        <path
-                            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                            fill="#EA4335" />
-                    </svg>
-                    Sign in with Google
-                </button>
-                <button id="skip-login-btn" class="modal-btn ghost-btn"
-                    style="margin-top: 12px; font-size: 13px; opacity: 0.6;">Continue Offline</button>
-            </div>
-        </div>
+        <div id="login-overlay" class="modal-overlay hidden"></div>
 
         <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
@@ -465,21 +436,7 @@
                     </button>
                 </div>
 
-                <div class="immersive-content">
-                    <div class="immersive-left">
-                        <img id="immersive-art" src="" alt="Album Art" class="immersive-art">
-                        <div class="immersive-info">
-                            <div id="immersive-title" class="immersive-title"></div>
-                            <div id="immersive-artist" class="immersive-artist"></div>
-                        </div>
-                    </div>
-                    <div class="immersive-right">
-                        <div id="lyrics-action-bar" class="lyrics-action-bar"></div>
-                        <div id="immersive-lyrics-container" class="lyrics-container immersive-lyrics">
-                            <!-- Lyrics populate here -->
-                        </div>
-                    </div>
-                </div>
+                <div id="immersive-content" class="immersive-content"></div>
 
                 <!-- Up Next badge — desktop only, bottom-right above the player bar -->
                 <div id="immersive-up-next" class="immersive-up-next hidden">
@@ -631,7 +588,7 @@
                     <h1 class="view-title" style="font-size: 48px; margin-bottom: 8px;">Profile</h1>
                     <p style="color: var(--text-secondary); font-size: 14px;">Manage your account and preferences</p>
                 </div>
-                <div class="profile-body" style="padding: 0 40px 100px;">
+                <div id="profile-body" class="profile-body" style="padding: 0 40px 100px;">
                     <!-- Profile content injected by JS -->
                 </div>
             </div>
@@ -904,66 +861,11 @@
             </div>
 
             <!-- Context Menu Dropdown -->
-            <div id="track-context-menu" class="context-menu hidden">
-                <button id="menu-edit-btn" class="menu-item">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                    </svg>
-                    Edit Info
-                </button>
-                <button id="menu-playlist-btn" class="menu-item">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                    Add to Playlist
-                </button>
-                <button id="menu-remove-playlist-btn" class="menu-item hidden">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                    Remove from Playlist
-                </button>
-                <div class="menu-divider"></div>
-                <button id="menu-go-artist-btn" class="menu-item">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="12" cy="7" r="4"></circle>
-                    </svg>
-                    Go to Artist
-                </button>
-                <button id="menu-go-album-btn" class="menu-item">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
-                        <line x1="7" y1="2" x2="7" y2="22"></line>
-                        <line x1="17" y1="2" x2="17" y2="22"></line>
-                        <line x1="2" y1="12" x2="22" y2="12"></line>
-                        <line x1="2" y1="7" x2="7" y2="7"></line>
-                        <line x1="2" y1="17" x2="7" y2="17"></line>
-                        <line x1="17" y1="17" x2="22" y2="17"></line>
-                        <line x1="17" y1="7" x2="22" y2="7"></line>
-                    </svg>
-                    Go to Album
-                </button>
-            </div>
-
-            <!-- Add to Playlist Dropdown (shared, repositioned by JS) -->
+            <!-- Dynamic Overlays -->
+            <div id="track-context-menu" class="context-menu hidden"></div>
             <div id="add-to-playlist-dropdown" class="add-to-playlist-dropdown hidden"></div>
 
-            <!-- Dependency Installation Modal -->
-            <div id="dependency-modal" class="modal-overlay hidden">
-                <div class="modal-content glass-panel">
-                    <h2 class="modal-title">Unsupported Format</h2>
-                    <p class="modal-text">This audio format is not natively supported by your browser for direct
-                        playback. Please consider using a compatible format or quality setting.</p>
-                    <div class="modal-actions">
-                        <button id="modal-cancel-btn" class="modal-btn primary-btn" style="width: 100%;">Close</button>
-                        <button id="modal-install-btn" class="modal-btn primary-btn hidden">Install</button>
-                    </div>
-                </div>
-            </div>
+            <div id="dependency-modal" class="modal-overlay hidden"></div>
 
             <!-- Mobile Bottom Navigation Bar -->
             <nav class="mobile-bottom-nav">
