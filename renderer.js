@@ -152,6 +152,70 @@ document.addEventListener('DOMContentLoaded', async () => {
     let allLikedTracksCache = [];
     let historyTracks = [];
 
+    // Router Initialization
+    Router.init({
+        views: {
+            home: homeView,
+            search: searchView,
+            artist: artistView,
+            album: albumView,
+            playlist: playlistView,
+            likes: document.getElementById('likes-view'),
+            history: document.getElementById('history-view'),
+            downloads: document.getElementById('downloads-view'),
+            stats: document.getElementById('stats-view'),
+            profile: profileView
+        },
+        onRouteChanged: (viewId, stateData, push) => {
+            switch (viewId) {
+                case 'home': Router.switchToView('home'); break;
+                case 'search':
+                    if (stateData.query !== undefined) {
+                        if (searchInput) searchInput.value = stateData.query;
+                        if (mobileSearchInput) mobileSearchInput.value = stateData.query;
+                        Search.renderSearchResults(stateData.query);
+                    }
+                    Router.switchToView('search');
+                    break;
+                case 'album':
+                    if (stateData.albumInfo) openAlbumView(stateData.albumInfo, false);
+                    else Router.switchToView('album');
+                    break;
+                case 'artist':
+                    if (stateData.artistName) openArtistView(stateData.artistName, false);
+                    else Router.switchToView('artist');
+                    break;
+                case 'playlist':
+                    if (stateData.playlist) openPlaylistView(stateData.playlist, false);
+                    else Router.switchToView('playlist');
+                    break;
+                case 'settings': openSettings(false, stateData.tab || 'all'); break;
+                case 'profile':
+                    renderProfilePanel();
+                    openProfile(false);
+                    break;
+                case 'history': 
+                    Router.switchToView('history');
+                    renderHistoryView();
+                    break;
+                case 'likes': 
+                    Router.switchToView('likes');
+                    renderLikesView();
+                    break;
+                case 'downloads': 
+                    Router.switchToView('downloads');
+                    fetchDownloads();
+                    break;
+                case 'queue': showQueueOverlay(); break;
+                case 'immersive': showImmersiveOverlay(); break;
+                case 'stats': 
+                    Router.switchToView('stats');
+                    renderStatsView();
+                    break;
+            }
+        }
+    });
+
     // ΓöÇΓöÇ Firebase Configuration ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     /**
      * NOTE FOR CONTRIBUTORS:
@@ -436,8 +500,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Clean up the URL hash without triggering a 'back' event.
             // We return to 'home' to ensure the UI stays in a valid state.
-            history.replaceState({ viewId: 'home', stateData: {} }, '', '#home');
-            switchToHomeView(false);
+            Router.navigate('home', {}, false);
         } else {
             // If we're entering immersive mode from an overlay (Settings, Profile, etc.),
             // replace the current history entry so that exiting immersive mode doesn't
@@ -446,10 +509,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 (profileView && profileView.classList.contains('active'));
 
             if (isOverlayActive) {
-                history.replaceState({ viewId: 'immersive', stateData: {} }, '', '#immersive');
-                renderState('immersive', {});
+                Router.navigate('immersive', {}, false);
             } else {
-                navigateTo('immersive');
+                Router.navigate('immersive');
             }
         }
     }
@@ -529,8 +591,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (window.location.hash === '#immersive') {
                 hideImmersiveOverlay();
                 // Return to home state without triggering a 'back' event
-                history.replaceState({ viewId: 'home', stateData: {} }, '', '#home');
-                switchToHomeView(false);
+                Router.navigate('home', {}, false);
             }
         }
     });
@@ -646,41 +707,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Settings Panel Logic
     function openSettings(push = true, targetTab = 'all') {
-        if (push) navigateTo('settings', { tab: targetTab });
+        if (push) Router.navigate('settings', { tab: targetTab });
         hideOverlays('settings'); // Close other overlays first
         renderSettingsPanel(targetTab);
-        settingsView.classList.remove('hidden');
-        settingsView.classList.add('active');
+        Router.openViewAnimated(settingsView);
         if (settingsBtn) settingsBtn.classList.add('settings-btn-active');
     }
 
     function closeSettings() {
         settingsView.classList.remove('active');
-        settingsView.classList.add('hidden');
+        setTimeout(() => {
+            if (!settingsView.classList.contains('active')) {
+                settingsView.classList.add('hidden');
+            }
+        }, 300);
         if (settingsBtn) settingsBtn.classList.remove('settings-btn-active');
     }
 
     function openProfile(push = true) {
-        if (push) navigateTo('profile');
+        if (push) Router.navigate('profile');
         hideOverlays();
 
-        homeView.classList.remove('active'); homeView.classList.add('hidden');
-        searchView.classList.remove('active'); searchView.classList.add('hidden');
-        albumView.classList.remove('active'); albumView.classList.add('hidden');
-        artistView.classList.remove('active'); artistView.classList.add('hidden');
-        if (playlistView) { playlistView.classList.remove('active'); playlistView.classList.add('hidden'); }
-        const glv = document.getElementById('likes-view'); if (glv) { glv.classList.remove('active'); glv.classList.add('hidden'); }
-        const ghv = document.getElementById('history-view'); if (ghv) { ghv.classList.remove('active'); ghv.classList.add('hidden'); }
-        const gdv = document.getElementById('downloads-view'); if (gdv) { gdv.classList.remove('active'); gdv.classList.add('hidden'); }
-        const gsv = document.getElementById('stats-view'); if (gsv) { gsv.classList.remove('active'); gsv.classList.add('hidden'); }
-
-        profileView.classList.remove('hidden');
-        profileView.classList.add('active');
+        Router.switchToView('profile');
         renderProfilePanel();
     }
 
     function closeProfile() {
-        switchToHomeView();
+        Router.navigate('home');
     }
 
     // ΓöÇΓöÇ Profile Panel Renderer ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -1960,109 +2013,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ΓöÇΓöÇ Navigation & Persistence Logic ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    function navigateTo(viewId, stateData = {}, push = true) {
-        if (push) {
-            history.pushState({ viewId, stateData }, '', '#' + viewId);
-        }
-        renderState(viewId, stateData);
-    }
-
-    function renderState(viewId, stateData = {}) {
-        switch (viewId) {
-            case 'home': switchToHomeView(false); break;
-            case 'search':
-                if (stateData.query !== undefined) {
-                    if (searchInput) searchInput.value = stateData.query;
-                    if (mobileSearchInput) mobileSearchInput.value = stateData.query;
-                    Search.renderSearchResults(stateData.query);
-                }
-                switchToSearchView(false);
-                break;
-            case 'album':
-                if (stateData.albumInfo) openAlbumView(stateData.albumInfo, false);
-                break;
-            case 'artist':
-                if (stateData.artistName) openArtistView(stateData.artistName, false);
-                break;
-            case 'playlist':
-                if (stateData.playlist) openPlaylistView(stateData.playlist, false);
-                break;
-            case 'settings': openSettings(false, stateData.tab || 'all'); break;
-            case 'profile':
-                renderProfilePanel();
-                openProfile(false);
-                break;
-            case 'history': switchToHistoryView(false); break;
-            case 'likes': switchToLikesView(false); break;
-            case 'downloads': switchToDownloadsView(false); break;
-            case 'queue': showQueueOverlay(); break;
-            case 'immersive': showImmersiveOverlay(); break;
-            case 'stats': switchToStatsView(false); break;
-        }
-    }
-
-    window.addEventListener('popstate', (e) => {
-        // Prevent popstate before app is fully initialized
-        if (!window.isAppInitialized) return;
-
-        if (e.state && e.state.viewId) {
-            renderState(e.state.viewId, e.state.stateData);
-        } else {
-            // Default to home if no state (e.g. first load)
-            switchToHomeView(false);
-        }
-    });
-
-    function switchToHomeView(push = true) {
-        if (push) navigateTo('home');
-        hideOverlays();
-        hideAllViews();
-        homeView.classList.remove('hidden'); homeView.classList.add('active');
-        Animations.oneShot(homeView, 'anim-view-enter');
-    }
-
-    function switchToHistoryView(push = true) {
-        if (push) navigateTo('history');
-        hideOverlays();
-        hideAllViews();
-
-        const historyView = document.getElementById('history-view');
-        if (historyView) {
-            historyView.classList.remove('hidden');
-            historyView.classList.add('active');
-            Animations.oneShot(historyView, 'anim-view-enter');
-            renderHistoryView();
-        }
-    }
-
-    function switchToLikesView(push = true) {
-        if (push) navigateTo('likes');
-        hideOverlays();
-        hideAllViews();
-
-        const likesView = document.getElementById('likes-view');
-        if (likesView) {
-            likesView.classList.remove('hidden');
-            likesView.classList.add('active');
-            Animations.oneShot(likesView, 'anim-view-enter');
-            renderLikesView();
-        }
-    }
-    function switchToDownloadsView(push = true) {
-        if (push) navigateTo('downloads');
-        hideOverlays();
-        hideAllViews();
-
-        const downloadsView = document.getElementById('downloads-view');
-        if (downloadsView) {
-            downloadsView.classList.remove('hidden');
-            downloadsView.classList.add('active');
-            Animations.oneShot(downloadsView, 'anim-view-enter');
-            fetchDownloads();
-        }
-    }
-
-
     function hideAllViews() {
         const views = ['home-view', 'search-view', 'artist-view', 'album-view', 'playlist-view', 'likes-view', 'history-view', 'downloads-view', 'stats-view', 'profile-view'];
         views.forEach(id => {
@@ -2072,58 +2022,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 el.classList.add('hidden');
             }
         });
-    }
-
-
-
-    function switchToSearchView(push = true) {
-        if (push) navigateTo('search', { query: searchInput.value || (mobileSearchInput ? mobileSearchInput.value : '') });
-        hideOverlays();
-        hideAllViews();
-        searchView.classList.remove('hidden'); searchView.classList.add('active');
-        Animations.oneShot(searchView, 'anim-view-enter');
-    }
-
-    function switchToAlbumView(push = true) {
-        // Note: stateData for album is usually handled by openAlbumView
-        if (push) navigateTo('album');
-        hideOverlays();
-        hideAllViews();
-        albumView.classList.remove('hidden'); albumView.classList.add('active');
-        Animations.oneShot(albumView, 'anim-view-enter');
-    }
-
-    function switchToArtistView(push = true) {
-        if (push) navigateTo('artist');
-        hideOverlays();
-        hideAllViews();
-        artistView.classList.remove('hidden'); artistView.classList.add('active');
-        Animations.oneShot(artistView, 'anim-view-enter');
-    }
-
-    function switchToPlaylistView() {
-        hideOverlays();
-        hideAllViews();
-        const pv = document.getElementById('playlist-view');
-        if (pv) {
-            pv.classList.remove('hidden');
-            pv.classList.add('active');
-            Animations.oneShot(pv, 'anim-view-enter');
-        }
-    }
-
-    function switchToStatsView(push = true) {
-        if (push) navigateTo('stats');
-        hideOverlays();
-        hideAllViews();
-
-        const statsView = document.getElementById('stats-view');
-        if (statsView) {
-            statsView.classList.remove('hidden');
-            statsView.classList.add('active');
-            Animations.oneShot(statsView, 'anim-view-enter');
-            renderStatsView();
-        }
     }
 
     // Handle initial state or refresh
@@ -2156,7 +2054,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Top Navigation
     navHomeBtn.addEventListener('click', () => {
         searchInput.value = '';
-        switchToHomeView();
+        Router.navigate('home');
     });
 
     backBtn.addEventListener('click', () => {
@@ -2178,13 +2076,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (mobileHomeBtn) {
         mobileHomeBtn.addEventListener('click', () => {
             searchInput.value = '';
-            switchToHomeView();
+            Router.navigate('home');
         });
     }
 
     if (mobileSearchBtn) {
         mobileSearchBtn.addEventListener('click', () => {
-            switchToSearchView();
+            Router.navigate('search', { query: '' });
         });
     }
 
@@ -2261,7 +2159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderHomeGrid(); // Clear loading placeholders even on error
         }
     }
-    // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     function processAlbums(tracks) {
         window.albumsData = {};
@@ -2538,8 +2436,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     function openAlbumView(albumInfo, push = true) {
-        if (push) navigateTo('album', { albumInfo });
-        switchToAlbumView(false);
+        if (push) {
+            Router.navigate('album', { albumInfo });
+            return;
+        }
+        Router.switchToView('album');
 
         let coverHtml = `<div class="album-hero-cover" style="background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));"></div>`;
         if (albumInfo.coverTrackPath) {
@@ -3007,8 +2908,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function openArtistView(artistName, push = true) {
-        if (push) navigateTo('artist', { artistName });
-        switchToArtistView(false);
+        if (push) {
+            Router.navigate('artist', { artistName });
+            return;
+        }
+        Router.switchToView('artist');
 
         artistHeroName.textContent = artistName;
 
@@ -3444,10 +3348,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function openPlaylistView(playlist, push = true) {
+        if (push) {
+            Router.navigate('playlist', { playlist });
+            return;
+        }
+        Router.switchToView('playlist');
         Playlist.renderPlaylistView(playlist);
-        if (push) navigateTo('playlist', { playlist });
         activePlaylistId = playlist.id;
-        switchToPlaylistView(false);
 
         // Use the passed playlist object if it has tracks (Search/Discover results)
         // or find in allPlaylists for the most up-to-date local version.
@@ -4221,12 +4128,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Always start at landing page (Home)
         // Expose UI functions for modular access (js/search.js, etc)
-        window.switchToSearchView = switchToSearchView;
-        window.switchToHomeView = switchToHomeView;
+        window.openAlbumView = openAlbumView;
         window.openArtistView = openArtistView;
         window.openPlaylistView = openPlaylistView;
         window.renderTrackList = renderTrackList;
         window.openCreatePlaylistModal = openCreatePlaylistModal;
+        window.hideQueueOverlay = hideQueueOverlay;
+        window.hideImmersiveOverlay = hideImmersiveOverlay;
+        window.hideContextMenu = hideContextMenu;
+        window.closeSettings = closeSettings;
         window.triggerPlaylistCoverChange = (id) => {
             const input = document.createElement('input');
             input.type = 'file';
@@ -4267,13 +4177,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         shuffleBtn.classList.toggle('toggle-active', Playback.isShuffleActive);
         updateRepeatUI(Playback.repeatMode);
 
-        switchToHomeView(false);
+        Router.navigate('home', {}, false);
         window.isAppInitialized = true;
 
         // Check for initial hash and navigate if needed (after initialization)
         const initialHash = window.location.hash.substring(1);
-        if (initialHash && initialHash !== 'home') {
-            renderState(initialHash);
+        if (initialHash && initialHash !== 'home' && initialHash !== '') {
+            Router.navigate(initialHash, {}, false);
         }
     } catch (err) {
         console.error("Initialization failed:", err);

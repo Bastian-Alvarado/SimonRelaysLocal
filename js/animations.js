@@ -77,3 +77,5 @@ const Animations = (function () {
         }
     };
 })();
+
+window.Animations = Animations;
