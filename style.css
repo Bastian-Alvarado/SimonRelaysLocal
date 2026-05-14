@@ -1228,6 +1228,11 @@ body {
     left: 0;
     width: 100%;
     z-index: 2001;
+    padding-bottom: 0;
+}
+
+.immersive-active .app-header {
+    display: none;
 }
 
 .player-left {
@@ -4324,6 +4329,67 @@ font-weight: 500;
     font-size: 10px;
     height: auto;
 }
+}
+
+/* ── Animations Module (scoped under body.animations-enabled) ────────────── */
+
+@keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleFadeIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes likeBounce {
+    0%   { transform: scale(1); }
+    30%  { transform: scale(1.35); }
+    60%  { transform: scale(0.9); }
+    100% { transform: scale(1); }
+}
+
+@keyframes activePulse {
+    0%   { border-color: color-mix(in srgb, var(--accent), transparent 70%); }
+    50%  { border-color: color-mix(in srgb, var(--accent), transparent 40%); }
+    100% { border-color: color-mix(in srgb, var(--accent), transparent 70%); }
+}
+
+/* Staggered item entry — items start invisible, animate in with delay */
+body.animations-enabled .anim-stagger-item {
+    animation: fadeSlideIn 0.3s ease-out both;
+}
+
+/* View entrance on navigation */
+body.animations-enabled .anim-view-enter {
+    animation: scaleFadeIn 0.2s ease-out both;
+}
+
+/* Subtle pulse when a track becomes active */
+body.animations-enabled .track-item.active {
+    animation: activePulse 2s ease-in-out 1;
+}
+
+/* Like/heart button bounce */
+body.animations-enabled .like-bounce {
+    animation: likeBounce 0.4s ease-out;
+}
+
+/* Play button scale pop on state change */
+body.animations-enabled .play-pop {
+    animation: likeBounce 0.25s ease-out;
+}
+
+/* Respect OS-level reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+    body.animations-enabled .anim-stagger-item,
+    body.animations-enabled .anim-view-enter,
+    body.animations-enabled .track-item.active,
+    body.animations-enabled .like-bounce,
+    body.animations-enabled .play-pop {
+        animation: none !important;
+    }
 }
 
 .hidden,

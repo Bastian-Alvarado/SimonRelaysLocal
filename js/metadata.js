@@ -32,7 +32,9 @@ const Metadata = (function() {
                 start: 'check-metadata-start-btn',
                 cancel: 'check-metadata-cancel-btn',
                 status: 'check-progress-status',
-                container: 'check-progress-container'
+                container: 'check-progress-container',
+                percent: 'check-progress-percent',
+                bar: 'check-progress-bar'
             }
         },
         callbacks: {
@@ -157,6 +159,8 @@ const Metadata = (function() {
         const startBtn = getEl(config.selectors.healthCheck.start);
         const statusEl = getEl(config.selectors.healthCheck.status);
         const container = getEl(config.selectors.healthCheck.container);
+        const percentEl = getEl(config.selectors.healthCheck.percent);
+        const barEl = getEl(config.selectors.healthCheck.bar);
 
         const checkCover = document.getElementById('check-cover-art')?.checked;
         const checkArtists = document.getElementById('check-artists')?.checked;
@@ -226,6 +230,11 @@ const Metadata = (function() {
 
                 statusEl.textContent = `Checking ${i + 1}/${total}: ${localTitle}`;
                 
+                // Update Progress Bar
+                const progress = Math.round(((i + 1) / total) * 100);
+                if (percentEl) percentEl.textContent = `${progress}%`;
+                if (barEl) barEl.style.width = `${progress}%`;
+                
                 const match = deezerTracks.find(dt => fuzzyMatch(dt.title, localTitle));
                 const update = { relativePath: local.relativePath, isLocal: !!local.isLocal, metadata: {} };
                 let changed = false;
@@ -289,7 +298,14 @@ const Metadata = (function() {
 
             if (corrections.length > 0) {
                 statusEl.textContent = `Applying ${corrections.length} corrections...`;
-                for (const corr of corrections) {
+                for (let i = 0; i < corrections.length; i++) {
+                    const corr = corrections[i];
+                    
+                    // Update Progress Bar
+                    const progress = Math.round(((i + 1) / corrections.length) * 100);
+                    if (percentEl) percentEl.textContent = `${progress}%`;
+                    if (barEl) barEl.style.width = `${progress}%`;
+
                     await fetch(`${config.serverBaseUrl}/api/update-metadata`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },

@@ -995,6 +995,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <span class="zoom-max-label">150%</span>
                     </div>
                 </div>
+                <div class="settings-row" style="flex-direction: row; justify-content: space-between; align-items: center;">
+                    <div class="settings-row-info">
+                        <div class="settings-row-label">Enable Animations</div>
+                        <div class="settings-row-sub">Smooth transitions and staggered entries. Disable for better performance on slower devices.</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="setting-animations-toggle" ${Animations.isEnabled() ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
             </div>
 
             <div class="settings-section" data-category="audio">
@@ -1169,6 +1179,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             { value: '192', label: '192kbps' },
             { value: '128', label: '128kbps' }
         ];
+
+        // Animations toggle handler
+        const animToggle = document.getElementById('setting-animations-toggle');
+        if (animToggle) {
+            animToggle.addEventListener('change', (e) => {
+                Animations.toggle(e.target.checked);
+            });
+        }
 
         // Playback section handlers
         const crossfadeToggle = document.getElementById('setting-crossfade-toggle');
@@ -1588,10 +1606,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const ctx = Playback.currentPlaylistContext;
         const idx = Playback.currentTrackIndex;
-        const remaining = ctx.length - 1 - idx;
-        if (remaining >= 10) return;
 
+        // Only trigger if the total context is small (< 10 items), as requested.
+        // Once triggered, we mark it as _isInfinite so it continues to refill as a rolling buffer.
+        if (ctx.length >= 10 && !ctx._isInfinite) return;
+
+        const remaining = Playback.remainingContextCount;
         const needed = 10 - remaining;
+        if (needed <= 0) return;
+
         let lastTrack = ctx[ctx.length - 1] || null;
 
         // Use a virtual history to ensure the 10-track batch is diverse
@@ -1606,6 +1629,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const pick = _pickRecommendedTrack(lastTrack, tempHistory);
             if (pick) {
                 Playback.appendContext(pick);
+                ctx._isInfinite = true; // "Lock in" the infinite state for this selection
                 tempHistory.push(pick.url);
                 lastTrack = pick;
                 addedAny = true;
@@ -1971,6 +1995,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         hideOverlays();
         hideAllViews();
         homeView.classList.remove('hidden'); homeView.classList.add('active');
+        Animations.oneShot(homeView, 'anim-view-enter');
     }
 
     function switchToHistoryView(push = true) {
@@ -1982,6 +2007,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (historyView) {
             historyView.classList.remove('hidden');
             historyView.classList.add('active');
+            Animations.oneShot(historyView, 'anim-view-enter');
             renderHistoryView();
         }
     }
@@ -1995,6 +2021,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (likesView) {
             likesView.classList.remove('hidden');
             likesView.classList.add('active');
+            Animations.oneShot(likesView, 'anim-view-enter');
             renderLikesView();
         }
     }
@@ -2007,6 +2034,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (downloadsView) {
             downloadsView.classList.remove('hidden');
             downloadsView.classList.add('active');
+            Animations.oneShot(downloadsView, 'anim-view-enter');
             fetchDownloads();
         }
     }
@@ -2030,6 +2058,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         hideOverlays();
         hideAllViews();
         searchView.classList.remove('hidden'); searchView.classList.add('active');
+        Animations.oneShot(searchView, 'anim-view-enter');
     }
 
     function switchToAlbumView(push = true) {
@@ -2038,6 +2067,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         hideOverlays();
         hideAllViews();
         albumView.classList.remove('hidden'); albumView.classList.add('active');
+        Animations.oneShot(albumView, 'anim-view-enter');
     }
 
     function switchToArtistView(push = true) {
@@ -2045,6 +2075,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         hideOverlays();
         hideAllViews();
         artistView.classList.remove('hidden'); artistView.classList.add('active');
+        Animations.oneShot(artistView, 'anim-view-enter');
     }
 
     function switchToPlaylistView(push = true) {
@@ -2055,6 +2086,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (pv) {
             pv.classList.remove('hidden');
             pv.classList.add('active');
+            Animations.oneShot(pv, 'anim-view-enter');
         }
     }
 
@@ -2067,6 +2099,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (statsView) {
             statsView.classList.remove('hidden');
             statsView.classList.add('active');
+            Animations.oneShot(statsView, 'anim-view-enter');
             renderStatsView();
         }
     }
@@ -2322,7 +2355,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             recentList.appendChild(createAlbumCard(albumInfo));
         });
 
-
+        // Stagger album cards
+        Animations.stagger(recentList, '.album-card', 40);
 
         if (typeof renderRecentArtists === 'function') {
             renderRecentArtists();
@@ -2646,6 +2680,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ΓöÇΓöÇ Track List Rendering ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    /**
+     * Robust comparison for track objects to determine if they are the same song.
+     * Handles relative paths vs absolute URLs and URL encoding discrepancies.
+     */
+    function isSameTrack(t1, t2) {
+        if (!t1 || !t2) return false;
+        if (t1 === t2) return true; // Identity match
+        
+        let u1 = t1.url || '';
+        let u2 = t2.url || '';
+        
+        if (!u1 || !u2) return false;
+
+        // Strip server base URL to compare relative paths if possible
+        const normalize = (url) => {
+            let path = url;
+            if (path.includes('/audio/')) {
+                path = path.substring(path.indexOf('/audio/'));
+            }
+            try {
+                return decodeURIComponent(path).toLowerCase();
+            } catch (e) {
+                return path.toLowerCase();
+            }
+        };
+
+        return normalize(u1) === normalize(u2);
+    }
+
     function renderTrackList(tracks, container = trackListElement, isPlaylistView = false, playlistId = null, canEdit = true, showTrackNumbers = false, isQueueView = false) {
         container.innerHTML = '';
 
@@ -2670,7 +2733,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isUnsupported = isTrackUnsupported(track);
 
             if (isUnsupported) trackItem.classList.add('unsupported-track');
-            if (Playback.currentTrack && Playback.currentTrack.url === track.url) trackItem.classList.add('active');
+            const isTrackActive = isSameTrack(Playback.currentTrack, track);
+            if (isTrackActive) trackItem.classList.add('active');
 
             const title = (track.metadata && track.metadata.title) ? track.metadata.title : track.filename;
             const artist = (track.metadata && track.metadata.artist) ? track.metadata.artist : 'Unknown Artist';
@@ -2938,6 +3002,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             fragment.appendChild(trackItem);
         });
         container.appendChild(fragment);
+
+        // Stagger track items on initial view open (skip queue re-renders)
+        if (!isQueueView) {
+            Animations.stagger(container, '.track-item', 25);
+        }
     }
 
     function openArtistView(artistName, push = true) {
@@ -3184,6 +3253,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 };
                 allLikedTracksCache.unshift(trackData); // Add to top
                 updateLikeButtonState();
+
+                // Bounce the like buttons
+                const likeBtn = document.getElementById('like-track-btn');
+                const immersiveLike = document.getElementById('immersive-like-btn');
+                if (likeBtn) Animations.oneShot(likeBtn, 'like-bounce');
+                if (immersiveLike) Animations.oneShot(immersiveLike, 'like-bounce');
+
                 await likeRef.set(trackData);
             }
 
@@ -3743,10 +3819,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function refreshCurrentView() {
-        // Optimize: instead of fully re-rendering track lists, we update just the icons directly in the DOM.
+        // Optimize: instead of fully re-rendering track lists, we update just the icons and active states directly in the DOM.
+        const currentView = document.querySelector('.view:not(.hidden)');
+        if (!currentView) return;
 
-        // 1. Update all track list buttons
-        const offlineBtns = document.querySelectorAll('.track-offline-btn');
+        // 1. Update Active Highlights
+        const allTrackItems = currentView.querySelectorAll('.track-item');
+        allTrackItems.forEach(item => {
+            const trackUrl = item.dataset.url;
+            const isNowPlaying = isSameTrack(Playback.currentTrack, { url: trackUrl });
+            item.classList.toggle('active', isNowPlaying);
+        });
+
+        // 2. Update all track list buttons (Downloads/Offline)
+        const offlineBtns = currentView.querySelectorAll('.track-offline-btn');
         offlineBtns.forEach(btn => {
             const url = btn.getAttribute('data-track-url');
             if (!url) return;
@@ -4048,6 +4134,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     Search.init();
     Theme.init({ serverBaseUrl });
     Stats.init({ serverBaseUrl });
+    Animations.init();
 
     Metadata.init({
         serverBaseUrl,
@@ -4092,6 +4179,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         onTrackChange: (track) => {
             updateNowPlayingUI(track);
             if (typeof updateImmersiveUpNext === 'function') updateImmersiveUpNext();
+            if (queueView && queueView.classList.contains('active')) renderQueueView();
+            refreshCurrentView(); // Update active highlights in albums/playlists
             _fillInfiniteBuffer();
         },
         onPlayStateChange: (isPlaying) => {
@@ -4105,6 +4194,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (icon) icon.setAttribute('d', 'M8 5v14l11-7z');
                 if (btn) btn.title = 'Play';
             }
+            if (btn) Animations.oneShot(btn, 'play-pop');
 
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';

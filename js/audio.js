@@ -74,21 +74,40 @@ const Playback = (() => {
         return array;
     }
 
-    function generateShuffleQueue(startIndex = -1) {
-        const indices = currentPlaylistContext.map((_, i) => i);
-        // Filter out unsupported here if needed, but for now we assume they are valid
-        const shuffled = shuffleArray(indices);
+    function generateShuffleQueue(startIndex) {
+        const sourceLength = currentPlaylistContext._sourceLength || currentPlaylistContext.length;
+        shuffledIndices = [];
+        
+        // 1. Maintain played tracks in linear order at the start
+        // This prevents them from being re-added to the "Up Next" pool
+        let playedIndices = [];
+        for (let i = 0; i < startIndex; i++) {
+            if (i < sourceLength) playedIndices.push(i);
+        }
 
-        if (startIndex !== -1) {
-            const pos = shuffled.indexOf(startIndex);
-            if (pos !== -1) {
-                shuffled.splice(pos, 1);
-                shuffled.unshift(startIndex);
+        // 2. Collect upcoming source tracks
+        let upcomingIndices = [];
+        for (let i = startIndex + 1; i < sourceLength; i++) {
+            upcomingIndices.push(i);
+        }
+
+        // 3. Fisher-Yates shuffle ONLY the upcoming source tracks
+        for (let i = upcomingIndices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [upcomingIndices[i], upcomingIndices[j]] = [upcomingIndices[j], upcomingIndices[i]];
+        }
+
+        // 4. Combine: Played -> Current -> Shuffled Upcoming
+        shuffledIndices = [...playedIndices, startIndex, ...upcomingIndices];
+
+        // 5. Append recommendation indices linearly at the very end
+        for (let i = sourceLength; i < currentPlaylistContext.length; i++) {
+            if (i !== startIndex) {
+                shuffledIndices.push(i);
             }
         }
 
-        shuffledIndices = shuffled;
-        currentShufflePointer = 0;
+        currentShufflePointer = startIndex;
     }
 
     function updateMediaSession(track) {
@@ -202,6 +221,12 @@ const Playback = (() => {
             return upcoming;
         },
         get currentTrackIndex() { return currentTrackIndex; },
+        get remainingContextCount() {
+            if (isShuffleActive) {
+                return Math.max(0, shuffledIndices.length - 1 - currentShufflePointer);
+            }
+            return Math.max(0, currentPlaylistContext.length - 1 - currentTrackIndex);
+        },
         get queue() { return userQueue; },
 
         // --- Actions ---
@@ -218,11 +243,14 @@ const Playback = (() => {
 
         async playTrack(track, context = null, index = -1) {
             if (context) {
-                currentPlaylistContext = context;
+                currentPlaylistContext = [...context]; // Copy to prevent mutation of source (playlist/album)
+                currentPlaylistContext._sourceLength = context.length;
                 currentTrackIndex = index;
                 if (isShuffleActive) generateShuffleQueue(index);
             } else if (index !== -1) {
                 currentTrackIndex = index;
+            } else {
+                currentTrackIndex = -1; // Playing outside context (manual queue)
             }
 
             // --- Synchronous Handover Logic ---
