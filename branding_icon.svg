@@ -1,15 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
     <rect width="512" height="512" rx="100" fill="#1a1a1a"/>
-    <!-- Branding Hexagon -->
-    <path d="M256 43L448 149V363L256 469L64 363V149L256 43Z" fill="none" stroke="#f43f5e" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
-    
-    <!-- Abstract Play/Pause Node -->
-    <path d="M171 171v170l128-85z M363 171v170" fill="none" stroke="#f43f5e" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
-    
-    <!-- SimonSays Node Dots -->
-    <circle cx="171" cy="171" r="17" fill="#f43f5e" stroke="none" />
-    <circle cx="171" cy="341" r="17" fill="#f43f5e" stroke="none" />
-    <circle cx="299" cy="256" r="17" fill="#f43f5e" stroke="none" />
-    <circle cx="363" cy="171" r="17" fill="#f43f5e" stroke="none" />
-    <circle cx="363" cy="341" r="17" fill="#f43f5e" stroke="none" />
+    <g transform="translate(51.2, 51.2) scale(0.8)">
+        <!-- Branding Hexagon -->
+        <path d="M256 43L448 149V363L256 469L64 363V149L256 43Z" fill="none" stroke="#f43f5e" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
+        
+        <!-- Abstract Play/Pause Node -->
+        <path d="M171 171v170l128-85z M363 171v170" fill="none" stroke="#f43f5e" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
+        
+        <!-- SimonSays Node Dots -->
+        <circle cx="171" cy="171" r="17" fill="#f43f5e" stroke="none" />
+        <circle cx="171" cy="341" r="17" fill="#f43f5e" stroke="none" />
+        <circle cx="299" cy="256" r="17" fill="#f43f5e" stroke="none" />
+        <circle cx="363" cy="171" r="17" fill="#f43f5e" stroke="none" />
+        <circle cx="363" cy="341" r="17" fill="#f43f5e" stroke="none" />
+    </g>
 </svg>
