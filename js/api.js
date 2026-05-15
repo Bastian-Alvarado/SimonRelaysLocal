@@ -127,6 +127,11 @@ const API = (() => {
                 body: JSON.stringify({ name })
             });
             return res.json();
+        },
+        
+        async triggerTranscoder() {
+            const res = await request('/api/trigger-transcoder', { method: 'POST' });
+            return res.json();
         }
     };
 })();

@@ -307,6 +307,16 @@ const Templates = (() => {
                             </div>
                         </div>
                     </div>
+                    <div class="settings-row">
+                        <div class="settings-row-info">
+                            <div class="settings-row-label">Transcode Double Check</div>
+                            <div class="settings-row-sub">Scan for lossless tracks and ensure all MP3 qualities are ready for mobile streaming.</div>
+                        </div>
+                        <div class="settings-input-group">
+                            <button id="trigger-transcoder-btn" class="settings-save-btn">Start Scan</button>
+                        </div>
+                        <div id="transcoder-status" class="local-path-status"></div>
+                    </div>
                 </div>
 
 
@@ -647,7 +657,7 @@ const Templates = (() => {
                     <img id="immersive-art" src="${pictureUrl || ''}" alt="Album Art" class="immersive-art">
                     <div class="immersive-info">
                         <div id="immersive-title" class="immersive-title">${title || ''}</div>
-                        <div id="immersive-artist" class="immersive-artist">${artist || ''}</div>
+                        <div id="immersive-artist" class="immersive-artist"></div>
                     </div>
                 </div>
                 <div class="immersive-right">
@@ -1062,6 +1072,32 @@ const UI = (() => {
             const loginOverlay = document.getElementById('login-overlay');
             if (loginOverlay) loginOverlay.innerHTML = Templates.LoginModal();
             // Note: EditMetadataModal is populated dynamically when opened as it needs track data
+        },
+
+        showNotification(title, message) {
+            const modal = document.getElementById('notification-modal');
+            const titleEl = document.getElementById('notification-title');
+            const messageEl = document.getElementById('notification-message');
+            const okBtn = document.getElementById('notification-ok-btn');
+
+            if (!modal || !titleEl || !messageEl || !okBtn) {
+                console.error('Notification modal elements not found');
+                return;
+            }
+
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+            modal.classList.remove('hidden');
+
+            const hide = () => {
+                modal.classList.add('hidden');
+                okBtn.removeEventListener('click', hide);
+            };
+            okBtn.onclick = hide;
+            
+            modal.onclick = (e) => {
+                if (e.target === modal) hide();
+            };
         }
     };
 })();

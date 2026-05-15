@@ -1192,6 +1192,46 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
+        // Transcode Double Check handler
+        const triggerBtn = body.querySelector('#trigger-transcoder-btn');
+        const triggerStatus = body.querySelector('#transcoder-status');
+        if (triggerBtn) {
+            triggerBtn.addEventListener('click', async () => {
+                triggerBtn.disabled = true;
+                const originalText = triggerBtn.textContent;
+                triggerBtn.textContent = 'Triggering...';
+                if (triggerStatus) {
+                    triggerStatus.textContent = 'Contacting server...';
+                    triggerStatus.style.color = 'var(--text-secondary)';
+                }
+
+                try {
+                    const result = await API.triggerTranscoder();
+                    if (triggerStatus) {
+                        if (result.alreadyRunning) {
+                            triggerStatus.textContent = 'Transcoder is already running.';
+                            triggerStatus.style.color = 'var(--accent)';
+                        } else {
+                            triggerStatus.textContent = 'Background scan started successfully.';
+                            triggerStatus.style.color = '#4caf50';
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to trigger transcoder', e);
+                    if (triggerStatus) {
+                        triggerStatus.textContent = 'Failed to trigger scan: ' + e.message;
+                        triggerStatus.style.color = '#f44336';
+                    }
+                } finally {
+                    triggerBtn.textContent = originalText;
+                    triggerBtn.disabled = false;
+                    setTimeout(() => {
+                        if (triggerStatus) triggerStatus.textContent = '';
+                    }, 5000);
+                }
+            });
+        }
+
         filterSettings();
 
     };
@@ -1957,7 +1997,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function setupAlbumCardListeners(card, albumInfo) {
-        card.addEventListener('click', () => openAlbumView(albumInfo));
+        card.addEventListener('click', (e) => {
+            if (e.target.closest('.artist-link')) return;
+            openAlbumView(albumInfo);
+        });
         const playBtn = card.querySelector('.card-play-btn');
         if (playBtn) {
             playBtn.addEventListener('click', (e) => {
@@ -2322,12 +2365,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         trackItem.addEventListener('click', (e) => {
-            if (e.target.closest('.artist-link')) {
-                e.stopPropagation();
-                const clickedArtist = e.target.closest('.artist-link').dataset.artist || splitArtists(track.metadata?.artist || 'Unknown Artist')[0];
-                openArtistView(clickedArtist);
-                return;
-            }
+            // Artist links are now handled by a global delegated listener to ensure consistency across all views
             if (e.target.closest('.add-to-playlist-btn') || e.target.closest('.remove-from-playlist-btn') || e.target.closest('.drag-handle') || e.target.closest('.track-offline-btn')) return;
 
             if (isTrackUnsupported(track)) {
@@ -2963,7 +3001,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         updateLikeButtonState();
         bottomTitle.textContent = title;
-        bottomArtist.innerHTML = splitArtists(artist).map(a => `<span class="bottom-artist-link" data-artist="${a}" style="cursor: pointer;">${a}</span>`).join('<span style="opacity:0.5">, </span>');
+        bottomArtist.innerHTML = splitArtists(artist).map(a => `<span class="artist-link" data-artist="${a}" style="cursor: pointer;">${a}</span>`).join('<span style="opacity:0.5">, </span>');
 
         // Recent Artists
         try {
@@ -3017,7 +3055,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (immersiveArtist) {
             const artists = splitArtists(artist);
-            immersiveArtist.innerHTML = artists.map(a => `<span class="immersive-artist-link" data-artist="${a}" style="cursor:pointer;">${a}</span>`).join('<span style="opacity:0.5">, </span>');
+            immersiveArtist.innerHTML = artists.map(a => `<span class="artist-link" data-artist="${a}" style="cursor:pointer;">${a}</span>`).join('<span style="opacity:0.5">, </span>');
         }
 
         // Lyrics
@@ -3100,7 +3138,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log('[PWA] Track saved to IndexedDB (with assets):', track.url);
         } catch (e) {
             console.error('[PWA] Download failed', e);
-            alert('Failed to download track for offline use.');
+            UI.showNotification('Download Failed', 'Failed to download track for offline use.');
         } finally {
             State.get('pendingDownloads').delete(track.url);
 
@@ -3286,14 +3324,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Bottom Bar Click Navigation
     bottomArtist.addEventListener('click', (e) => {
         if (!Playback.currentTrack) return;
-        const link = e.target.closest('.bottom-artist-link');
-        if (link) {
-            openArtistView(link.dataset.artist);
-        } else {
-            const artistName = (Playback.currentTrack.metadata && Playback.currentTrack.metadata.artist) ? Playback.currentTrack.metadata.artist : "Unknown Artist";
-            openArtistView(splitArtists(artistName)[0]);
-        }
+        // Navigation is now handled by the global delegated .artist-link listener
     });
+
+    // Global Delegated Artist Link Handler
+    document.addEventListener('click', (e) => {
+        const artistLink = e.target.closest('.artist-link');
+        if (artistLink) {
+            e.preventDefault();
+            e.stopPropagation();
+            const artistName = artistLink.dataset.artist;
+            if (artistName) {
+                // If in immersive view, hide it first
+                if (document.getElementById('immersive-view').classList.contains('active')) {
+                    hideImmersiveOverlay();
+                }
+                openArtistView(artistName);
+            }
+        }
+    }, true);
 
     bottomTitle.addEventListener('click', () => {
         if (!Playback.currentTrack) return;
@@ -3461,7 +3510,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             onSave: async (playlist) => {
                 const currentUser = State.get('currentUser');
                 if (!currentUser) {
-                    alert('Please sign in to save playlists.');
+                    UI.showNotification('Sign In Required', 'Please sign in to save playlists.');
                     return;
                 }
                 
@@ -3473,12 +3522,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (playlist.customCover) {
                             await updatePlaylistCover(newPl.id, playlist.customCover);
                         }
-                        alert('Playlist saved to your library!');
+                        UI.showNotification('Success', 'Playlist saved to your library!');
                         await fetchPlaylists();
                     }
                 } catch (e) {
                     console.error('Failed to save playlist', e);
-                    alert('Failed to save playlist: ' + e.message);
+                    UI.showNotification('Error', 'Failed to save playlist: ' + e.message);
                 }
             }
         }

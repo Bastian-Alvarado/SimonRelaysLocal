@@ -85,7 +85,7 @@ const Metadata = (function() {
             }
         } catch (e) {
             console.error('[Metadata] Save failed:', e);
-            alert('Save failed: ' + e.message);
+            UI.showNotification('Save Failed', 'Save failed: ' + e.message);
         } finally {
             saveBtn.disabled = false;
             saveBtn.textContent = 'Save Changes';
@@ -168,7 +168,7 @@ const Metadata = (function() {
         const checkGenres = document.getElementById('check-genres')?.checked;
 
         if (!checkCover && !checkArtists && !checkNames && !checkGenres) {
-            alert("Please select at least one category to check.");
+            UI.showNotification('Selection Required', "Please select at least one category to check.");
             return;
         }
 
@@ -315,14 +315,14 @@ const Metadata = (function() {
                 statusEl.textContent = "Done! Refreshing library...";
                 if (config.callbacks.onLibraryRefresh) await config.callbacks.onLibraryRefresh();
                 if (config.callbacks.onAlbumRefresh && currentAlbum) await config.callbacks.onAlbumRefresh(currentAlbum.name);
-                alert(`Health Check Complete! Applied ${corrections.length} corrections.`);
+                UI.showNotification('Health Check Complete', `Health Check Complete! Applied ${corrections.length} corrections.`);
             } else {
-                alert("Health Check Complete! Everything looks good.");
+                UI.showNotification('Health Check Complete', "Health Check Complete! Everything looks good.");
             }
             closeEditors();
         } catch (e) {
             console.error('[Metadata] Health check failed:', e);
-            alert('Health check failed: ' + e.message);
+            UI.showNotification('Health Check Failed', 'Health check failed: ' + e.message);
         } finally {
             startBtn.disabled = false;
             startBtn.textContent = "Start Health Check";
@@ -390,12 +390,12 @@ const Metadata = (function() {
                         if (res.ok) {
                             closeEditors();
                             if (config.callbacks.onLibraryRefresh) await config.callbacks.onLibraryRefresh();
-                            alert('Track restored successfully!');
+                            UI.showNotification('Success', 'Track restored successfully!');
                         } else {
-                            alert('Restore failed.');
+                            UI.showNotification('Error', 'Restore failed.');
                         }
                     } catch (e) {
-                        alert('Error: ' + e.message);
+                        UI.showNotification('Error', 'Error: ' + e.message);
                     }
                 });
             }
