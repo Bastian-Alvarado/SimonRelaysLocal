@@ -1052,8 +1052,39 @@ body {
     font-weight: 600;
 }
 
-.album-hero-meta strong:hover {
-    text-decoration: underline;
+.genre-tag {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: default;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+}
+
+.genre-tag:hover {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.genre-tag.no-genre {
+    opacity: 0.4;
+    font-style: italic;
+    background: transparent;
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    letter-spacing: 0.5px;
 }
 
 .artist-avatar {
@@ -1624,6 +1655,59 @@ body {
     cursor: pointer;
     border: none;
     transition: all 0.2s ease;
+}
+
+/* Metadata Health Check Progress Bar */
+.check-progress-container {
+    margin-top: 24px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 20px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+}
+
+.check-progress-container.hidden {
+    display: none !important;
+}
+
+.progress-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+#check-progress-status {
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 85%;
+}
+
+#check-progress-percent {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+}
+
+.progress-track {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+#check-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gradient-1), var(--gradient-2)) !important;
+    width: 0%;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 15px color-mix(in srgb, var(--accent) 40%, transparent) !important;
 }
 
 .ghost-btn {

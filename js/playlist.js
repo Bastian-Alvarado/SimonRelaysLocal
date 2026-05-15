@@ -19,7 +19,8 @@ const Playlist = (function() {
             onPlay: null,     // (track, list, index) => { ... }
             onDelete: null,   // (id) => { ... }
             onRenamed: null,  // (id, name) => { ... }
-            onUpdated: null   // (playlist) => { ... }
+            onUpdated: null,  // (playlist) => { ... }
+            onSave: null      // (playlist) => { ... }
         }
     };
 
@@ -341,6 +342,13 @@ const Playlist = (function() {
             if (deleteBtn) {
                 deleteBtn.onclick = () => {
                     if (config.callbacks.onDelete) config.callbacks.onDelete(playlist.id);
+                };
+            }
+
+            const saveBtn = hero.querySelector('.save-to-library-btn');
+            if (saveBtn) {
+                saveBtn.onclick = () => {
+                    if (config.callbacks.onSave) config.callbacks.onSave(playlist);
                 };
             }
 

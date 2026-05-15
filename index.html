@@ -83,6 +83,11 @@
         </header>
 
         <div id="login-overlay" class="modal-overlay hidden"></div>
+        <div id="library-loading-overlay" class="modal-overlay hidden" style="z-index: 10000; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div class="loading-spinner" style="width: 50px; height: 50px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;"></div>
+            <div style="color: white; font-size: 18px; font-weight: 600; letter-spacing: 0.5px;">Initializing Music Library</div>
+            <div style="color: rgba(255,255,255,0.5); font-size: 13px; margin-top: 8px;">Preparing your audio experience...</div>
+        </div>
 
         <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
@@ -837,17 +842,13 @@
                         </label>
                     </div>
 
-                    <div id="check-progress-container" class="hidden" style="margin-bottom: 24px;">
-                        <div
-                            style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px;">
+                    <div id="check-progress-container" class="check-progress-container hidden">
+                        <div class="progress-info">
                             <span id="check-progress-status">Initializing...</span>
                             <span id="check-progress-percent">0%</span>
                         </div>
-                        <div
-                            style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
-                            <div id="check-progress-bar"
-                                style="height: 100%; width: 0%; background: var(--accent); transition: width 0.3s ease;">
-                            </div>
+                        <div class="progress-track">
+                            <div id="check-progress-bar"></div>
                         </div>
                     </div>
 

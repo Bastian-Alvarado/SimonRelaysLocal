@@ -3,6 +3,7 @@ const DEFAULT_SERVER_URL = (window.location.protocol.startsWith('http') && windo
     : 'http://localhost:3000';
 const serverBaseUrl = API.getBaseUrl();
 
+const libraryLoadingOverlay = document.getElementById('library-loading-overlay');
 const CARD_PLAY_BTN_HTML = `<button class="card-play-btn" title="Play">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
 </button>`;
@@ -61,9 +62,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.hideContextMenu = hideContextMenu;
     window.closeSettings = closeSettings;
     window.renderTrackList = (...args) => UI.renderTrackList(...args);
+    window.setupTrackListeners = setupTrackListeners;
     window.setupAlbumCardListeners = setupAlbumCardListeners;
     window.setupAlbumHeroListeners = setupAlbumHeroListeners;
     window.renderRecentArtists = renderRecentArtists;
+    window.fetchAndApplyArtistImage = (name, node, xl) => Theme.applyArtistVisuals(name, node, xl);
+    window.switchToSearchView = () => Router.switchToView('search');
     
     // Initialize Modules
     Theme.init({ serverBaseUrl });
@@ -1100,41 +1104,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Cloud Upload handlers
         const uploadBtn = body.querySelector('#cloud-upload-btn');
         const uploadInput = body.querySelector('#cloud-upload-input');
-        const uploadStatus = body.querySelector('#cloud-upload-status');
-        const progressContainer = body.querySelector('#cloud-upload-progress-container');
-        const overallFill = body.querySelector('#upload-overall-fill');
-        const overallText = body.querySelector('#upload-overall-text');
-        const currentFill = body.querySelector('#upload-current-fill');
-        const currentText = body.querySelector('#upload-current-text');
-
+        
         if (uploadBtn && uploadInput) {
             uploadBtn.addEventListener('click', () => uploadInput.click());
+            // Initial UI sync
+            updateUploadUI();
             uploadInput.addEventListener('change', async (e) => {
-                const files = Array.from(e.target.files);
-                if (files.length === 0) return;
+                const files = e.target.files;
+                if (!files || files.length === 0) return;
 
-                uploadBtn.disabled = true;
-                uploadBtn.textContent = 'Uploading...';
-                if (uploadStatus) {
-                    uploadStatus.textContent = '';
-                    uploadStatus.style.color = 'var(--text-secondary)';
-                }
-                if (progressContainer) progressContainer.classList.remove('hidden');
-
-                let successCount = 0;
-                let errorCount = 0;
+                const uploadState = {
+                    isUploading: true,
+                    successCount: 0,
+                    errorCount: 0,
+                    totalFiles: files.length,
+                    currentFileName: '',
+                    overallPercent: 0,
+                    currentFilePercent: 0,
+                    statusText: 'Preparing uploads...'
+                };
+                State.set('uploadState', { ...uploadState });
 
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
                     
-                    // Update overall progress
-                    const overallPercent = (i / files.length) * 100;
-                    if (overallFill) overallFill.style.width = `${overallPercent}%`;
-                    if (overallText) overallText.textContent = `${i}/${files.length} files`;
-                    
-                    // Reset current file progress
-                    if (currentFill) currentFill.style.width = '0%';
-                    if (currentText) currentText.textContent = '0%';
+                    uploadState.currentFileName = file.name;
+                    uploadState.overallPercent = (i / files.length) * 100;
+                    uploadState.currentFilePercent = 0;
+                    uploadState.statusText = `Uploading ${file.name}...`;
+                    State.set('uploadState', { ...uploadState });
 
                     try {
                         await new Promise((resolve, reject) => {
@@ -1145,24 +1143,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                             xhr.upload.onprogress = (event) => {
                                 if (event.lengthComputable) {
-                                    const percent = (event.loaded / event.total) * 100;
-                                    if (currentFill) currentFill.style.width = `${percent}%`;
-                                    if (currentText) currentText.textContent = `${Math.round(percent)}%`;
+                                    uploadState.currentFilePercent = (event.loaded / event.total) * 100;
+                                    State.set('uploadState', { ...uploadState });
                                 }
                             };
 
                             xhr.onload = () => {
                                 if (xhr.status >= 200 && xhr.status < 300) {
-                                    successCount++;
+                                    uploadState.successCount++;
                                     resolve();
                                 } else {
-                                    errorCount++;
+                                    uploadState.errorCount++;
                                     reject(new Error(`Upload failed with status ${xhr.status}`));
                                 }
+                                State.set('uploadState', { ...uploadState });
                             };
 
                             xhr.onerror = () => {
-                                errorCount++;
+                                uploadState.errorCount++;
+                                State.set('uploadState', { ...uploadState });
                                 reject(new Error('Network error during upload'));
                             };
 
@@ -1173,29 +1172,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
 
-                // Final progress state
-                if (overallFill) overallFill.style.width = '100%';
-                if (overallText) overallText.textContent = `${files.length}/${files.length} files`;
-                if (currentFill) currentFill.style.width = '100%';
-                if (currentText) currentText.textContent = '100%';
+                // Final state
+                uploadState.isUploading = false;
+                uploadState.overallPercent = 100;
+                uploadState.currentFilePercent = 100;
+                uploadState.statusText = `Done! ${uploadState.successCount} uploaded, ${uploadState.errorCount} failed.`;
+                State.set('uploadState', { ...uploadState });
 
-                uploadBtn.disabled = false;
-                uploadBtn.textContent = 'Select Files';
-                if (uploadStatus) {
-                    uploadStatus.textContent = `Done! ${successCount} uploaded, ${errorCount} failed.`;
-                    uploadStatus.style.color = errorCount > 0 ? '#f44336' : '#4caf50';
-                }
-
-                if (successCount > 0) {
+                if (uploadState.successCount > 0) {
                     if (typeof initializeMusicLibrary === 'function') await initializeMusicLibrary();
                 }
                 
-                // Hide progress after a delay
                 setTimeout(() => {
-                    if (!uploadBtn.disabled && progressContainer) {
-                        progressContainer.classList.add('hidden');
+                    const current = State.get('uploadState');
+                    if (!current.isUploading) {
+                        State.set('uploadState', { ...current, statusText: '' });
                     }
-                }, 3000);
+                }, 5000);
             });
         }
 
@@ -1211,13 +1204,57 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         UI.renderSettingsPanel({
+            activeTab: activeTab || 'appearance',
             Theme,
             Animations,
             Playback,
             currentCustomUrl: localStorage.getItem('serverUrl') || '',
-            DEFAULT_SERVER_URL
+            DEFAULT_SERVER_URL,
+            uploadState: State.get('uploadState')
         });
     }
+
+    // Global Cloud Upload UI Synchronizer
+    const updateUploadUI = () => {
+        const state = State.get('uploadState');
+        if (!state) return;
+
+        const uploadStatus = document.getElementById('cloud-upload-status');
+        const progressContainer = document.getElementById('cloud-upload-progress-container');
+        const overallFill = document.getElementById('upload-overall-fill');
+        const overallText = document.getElementById('upload-overall-text');
+        const currentFill = document.getElementById('upload-current-fill');
+        const currentText = document.getElementById('upload-current-text');
+        const btn = document.getElementById('cloud-upload-btn');
+
+        // Only show progress if uploading OR showing a "Done" status
+        if (progressContainer) {
+            const isVisible = state.isUploading || (state.statusText && state.statusText.includes('Done'));
+            progressContainer.classList.toggle('hidden', !isVisible);
+        }
+
+        if (uploadStatus) {
+            uploadStatus.textContent = state.statusText;
+            if (state.statusText.includes('Done')) {
+                uploadStatus.style.color = state.errorCount > 0 ? '#f44336' : '#4caf50';
+            } else {
+                uploadStatus.style.color = 'var(--text-secondary)';
+            }
+        }
+        if (overallFill) overallFill.style.width = `${state.overallPercent}%`;
+        if (overallText) overallText.textContent = `${state.successCount + state.errorCount}/${state.totalFiles} files`;
+        if (currentFill) currentFill.style.width = `${state.currentFilePercent}%`;
+        if (currentText) currentText.textContent = `${Math.round(state.currentFilePercent)}%`;
+        if (btn) {
+            btn.disabled = state.isUploading;
+            btn.textContent = state.isUploading ? 'Uploading...' : 'Select Files';
+        }
+    };
+
+    // Global subscription to sync upload UI across re-renders
+    State.subscribe((key) => {
+        if (key === 'uploadState') updateUploadUI();
+    });
 
     // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
@@ -1321,6 +1358,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ΓöÇΓöÇ Infinite Play Engine ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     function _updateSessionAffinity(track) {
+        const sessionAffinity = State.get('sessionAffinity');
         const artists = splitArtists(track.metadata?.artist || '');
         const rawGenre = track.metadata?.genre || '';
         const genres = (Array.isArray(rawGenre) ? rawGenre : String(rawGenre).split(/[,\/;]+/)).map(g => String(g).trim()).filter(g => g.length > 0);
@@ -1334,6 +1372,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         genres.forEach(g => {
             sessionAffinity.genres[g] = ((sessionAffinity.genres[g] || 0) * 0.6) + 1.0;
         });
+        State.notify('sessionAffinity', sessionAffinity);
     }
 
     function _isLastTrackInContext() {
@@ -1350,7 +1389,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         );
         if (candidates.length === 0) return null;
 
-        const historyToUse = virtualHistory || sessionHistory;
+        const historyToUse = virtualHistory || State.get('sessionHistory');
+        const sessionAffinity = State.get('sessionAffinity');
 
         const scored = candidates.map(track => {
             const trackArtists = splitArtists(track.metadata?.artist || '');
@@ -1451,7 +1491,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         let lastTrack = ctx[ctx.length - 1] || null;
 
         // Use a virtual history to ensure the 10-track batch is diverse
-        let tempHistory = [...sessionHistory];
+        let tempHistory = [...State.get('sessionHistory')];
         // Add existing unplayed context to temp history
         if (idx !== -1) {
             ctx.slice(idx + 1).forEach(t => tempHistory.push(t.url));
@@ -1886,85 +1926,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ΓöÇΓöÇ Music Library Initialization ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     async function initializeMusicLibrary() {
-        // Any reload means track metadata may have changed ΓÇö clear stale view cache entries
-        _openVCDB().then(async (db) => {
-            const manifest = await _vcGetManifest(db);
-            const albumAndArtistKeys = Object.keys(manifest.entries).filter(k => k.startsWith('album:') || k.startsWith('artist:'));
-            for (const key of albumAndArtistKeys) await _vcEvict(db, manifest, key);
-            if (albumAndArtistKeys.length > 0) await _vcPut(db, { key: VC_MANIFEST, data: manifest });
-        }).catch(() => { });
-
+        if (window.isAppInitialized) return;
+        
         try {
-            const serverRes = await fetch(`${serverBaseUrl}/api/audio`);
-            const serverTracks = serverRes.ok ? await serverRes.json() : [];
-
-            if (serverTracks.length > 0) {
-                // Mark all as server tracks
-                serverTracks.forEach(st => {
-                    st.isServer = true;
-                    st.isLocal = false;
-                });
-
-                State.set('allTracks', serverTracks);
-                processAlbums(serverTracks);
-            } else {
-                console.warn('Library is empty or server unreachable.');
-                State.set('allTracks', []);
-                renderHomeGrid(); // Clear loading placeholders
-            }
-        } catch (err) {
-            console.error('Error loading music library:', err);
-            renderHomeGrid(); // Clear loading placeholders even on error
+            if (libraryLoadingOverlay) libraryLoadingOverlay.classList.remove('hidden');
+            
+            // Delegate to the modular Library system
+            await Library.load();
+            
+            // Synchronize modular state with global State
+            State.set('allTracks', window.allTracks);
+            State.set('albumsData', window.albumsData);
+            
+            await fetchLikes();
+            renderHomeGrid();
+            
+            if (libraryLoadingOverlay) libraryLoadingOverlay.classList.add('hidden');
+        } catch (error) {
+            console.error('[Library] Initialization failed:', error);
+            if (libraryLoadingOverlay) libraryLoadingOverlay.classList.add('hidden');
+            renderHomeGrid();
         }
     }
     // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-    function processAlbums(tracks) {
-        const albumsData = {};
-
-        tracks.forEach(track => {
-            const albumName = (track.metadata && track.metadata.album) ? track.metadata.album : "Unknown Album";
-            const artistName = (track.metadata && track.metadata.artist) ? track.metadata.artist : "Unknown Artist";
-            const addedAt = track.addedAt || 0;
-
-            if (!albumsData[albumName]) {
-                albumsData[albumName] = {
-                    name: albumName,
-                    artist: artistName,
-                    coverTrackPath: (track.metadata && track.metadata.hasCover) ? track.relativePath : null,
-                    tracks: [],
-                    addedAt: addedAt
-                };
-            } else if (addedAt > albumsData[albumName].addedAt) {
-                albumsData[albumName].addedAt = addedAt;
-            }
-            albumsData[albumName].tracks.push(track);
-        });
-
-        // Sort tracks within each album by Disc Number, then Track Number, then Alphabetically
-        Object.values(albumsData).forEach(album => {
-            album.tracks.sort((a, b) => {
-                const aDiscRaw = (a.metadata && a.metadata.disk && a.metadata.disk.no) ? a.metadata.disk.no : 1;
-                const bDiscRaw = (b.metadata && b.metadata.disk && b.metadata.disk.no) ? b.metadata.disk.no : 1;
-                const aDisc = parseInt(aDiscRaw, 10) || 1;
-                const bDisc = parseInt(bDiscRaw, 10) || 1;
-                if (aDisc !== bDisc) return aDisc - bDisc;
-
-                const aNoRaw = (a.metadata && a.metadata.track && a.metadata.track.no) ? a.metadata.track.no : 9999;
-                const bNoRaw = (b.metadata && b.metadata.track && b.metadata.track.no) ? b.metadata.track.no : 9999;
-                const aNo = parseInt(aNoRaw, 10) || 9999;
-                const bNo = parseInt(bNoRaw, 10) || 9999;
-                if (aNo !== bNo) return aNo - bNo;
-
-                const aTitle = (a.metadata && a.metadata.title) ? a.metadata.title : a.filename;
-                const bTitle = (b.metadata && b.metadata.title) ? b.metadata.title : b.filename;
-                return aTitle.localeCompare(bTitle);
-            });
-        });
-
-        State.set('albumsData', albumsData);
-        renderHomeGrid();
-    }
 
 
     function renderHomeGrid() {
@@ -1986,7 +1971,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function setupAlbumHeroListeners(heroEl, albumInfo, isOffline, isDownloading) {
-        const playBtn = heroEl.querySelector('.playlist-play-btn');
+        // Play All
+        const playBtn = heroEl.querySelector('.album-play-btn');
         if (playBtn) {
             playBtn.addEventListener('click', () => {
                 const tracks = albumInfo.tracks;
@@ -1995,6 +1981,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
         }
+
+        // Download Album
+        const downloadBtn = heroEl.querySelector('.download-album-btn');
+        if (downloadBtn) {
+            downloadBtn.addEventListener('click', () => {
+                if (isOffline || isDownloading) return;
+                downloadAlbum(albumInfo);
+            });
+        }
+
+        // Edit Info
+        const editBtn = heroEl.querySelector('.edit-album-btn');
+        if (editBtn) {
+            editBtn.addEventListener('click', () => {
+                Metadata.openAlbumEditor(albumInfo);
+            });
+        }
+
+        // Check Metadata
+        const checkBtn = heroEl.querySelector('.check-metadata-btn');
+        if (checkBtn) {
+            checkBtn.addEventListener('click', () => {
+                Metadata.openHealthCheck(albumInfo);
+            });
+        }
+
         const backBtn = heroEl.querySelector('.playlist-back-btn');
         if (backBtn) {
             backBtn.addEventListener('click', () => history.back());
@@ -2210,7 +2222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return normalize(u1) === normalize(u2);
     }
 
-    window.setupTrackListeners = (trackItem, track, index, container, playlistId, canEdit) => {
+    function setupTrackListeners(trackItem, track, index, container, playlistId, canEdit) {
         // Context Menu Handler
         const moreBtn = trackItem.querySelector('.track-item-more-btn');
         if (moreBtn) {
@@ -2344,7 +2356,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 Playback.playTrack(track);
             }
         });
-    };
+    }
 
 
     function openArtistView(artistName, push = true) {
@@ -2717,7 +2729,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         const idx = State.get('allPlaylists').findIndex(p => p.id === playlistId);
         if (idx !== -1) {
-                allPlaylists: State.get('allPlaylists'),[idx].tracks = tracks;
+            State.get('allPlaylists')[idx].tracks = tracks;
             Playlist.renderUserStrip();
             if (activePlaylistId === playlistId) openPlaylistView(State.get('allPlaylists')[idx], false);
         }
@@ -2730,7 +2742,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         const idx = State.get('allPlaylists').findIndex(p => p.id === playlistId);
         if (idx !== -1) {
-                allPlaylists: State.get('allPlaylists'),[idx].customCover = base64;
+            State.get('allPlaylists')[idx].customCover = base64;
             Playlist.renderUserStrip();
             if (activePlaylistId === playlistId) openPlaylistView(State.get('allPlaylists')[idx], false);
         }
@@ -3406,6 +3418,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- Module Initializations (Must happen before first render) ---
+    Library.init({
+        serverBaseUrl,
+        callbacks: {
+            onAlbumClick: (album) => openAlbumView(album),
+            onPlay: (track, list, index) => Playback.playTrack(track, list, index),
+            isTrackUnsupported: (t) => isTrackUnsupported(t)
+        }
+    });
     Search.init();
     // Modules that depend on DOM elements should still init here
     Metadata.init({
@@ -3437,7 +3457,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             onNavigate: (playlist) => openPlaylistView(playlist),
             onPlay: (track, list, index) => Playback.playTrack(track, list, index),
             onDelete: (id) => deletePlaylist(id),
-            onRenamed: (id, name) => renamePlaylist(id, name)
+            onRenamed: (id, name) => renamePlaylist(id, name),
+            onSave: async (playlist) => {
+                const currentUser = State.get('currentUser');
+                if (!currentUser) {
+                    alert('Please sign in to save playlists.');
+                    return;
+                }
+                
+                try {
+                    const newName = `${playlist.name} (Shared)`;
+                    const newPl = await createPlaylist(newName);
+                    if (newPl && playlist.tracks) {
+                        await updatePlaylistTracks(newPl.id, playlist.tracks);
+                        if (playlist.customCover) {
+                            await updatePlaylistCover(newPl.id, playlist.customCover);
+                        }
+                        alert('Playlist saved to your library!');
+                        await fetchPlaylists();
+                    }
+                } catch (e) {
+                    console.error('Failed to save playlist', e);
+                    alert('Failed to save playlist: ' + e.message);
+                }
+            }
         }
     });
 
@@ -3540,9 +3583,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
             input.click();
         };
-        window.fetchAndApplyArtistImage = (name, node, xl) => Theme.applyArtistVisuals(name, node, xl);
-        window.splitArtists = splitArtists;
-        window.getSharedCoverUrl = getSharedCoverUrl;
 
         // Initialize UI states from module
         shuffleBtn.classList.toggle('toggle-active', Playback.isShuffleActive);

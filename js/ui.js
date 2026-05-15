@@ -287,23 +287,23 @@ const Templates = (() => {
                             <input type="file" id="cloud-upload-input" multiple accept="audio/*" style="display: none;">
                             <button id="cloud-upload-btn" class="settings-save-btn">Select Files</button>
                         </div>
-                        <div id="cloud-upload-status" class="local-path-status"></div>
+                        <div id="cloud-upload-status" class="local-path-status">${data.uploadState?.statusText || ''}</div>
                         
-                        <div id="cloud-upload-progress-container" class="upload-progress-container hidden">
+                        <div id="cloud-upload-progress-container" class="upload-progress-container ${data.uploadState?.isUploading ? '' : 'hidden'}">
                             <div class="upload-progress-row">
                                 <span class="upload-progress-label">Overall Progress</span>
-                                <span id="upload-overall-text">0/0 files</span>
+                                <span id="upload-overall-text">${data.uploadState?.isUploading ? `${data.uploadState.successCount + data.uploadState.errorCount}/${data.uploadState.totalFiles} files` : '0/0 files'}</span>
                             </div>
                             <div class="upload-progress-bar-bg">
-                                <div id="upload-overall-fill" class="upload-progress-bar-fill" style="width: 0%;"></div>
+                                <div id="upload-overall-fill" class="upload-progress-bar-fill" style="width: ${data.uploadState?.overallPercent || 0}%;"></div>
                             </div>
                             
                             <div class="upload-progress-row" style="margin-top: 4px;">
                                 <span class="upload-progress-label">Current File</span>
-                                <span id="upload-current-text">0%</span>
+                                <span id="upload-current-text">${data.uploadState?.currentFilePercent || 0}%</span>
                             </div>
                             <div class="upload-progress-bar-bg">
-                                <div id="upload-current-fill" class="upload-progress-bar-fill current" style="width: 0%;"></div>
+                                <div id="upload-current-fill" class="upload-progress-bar-fill current" style="width: ${data.uploadState?.currentFilePercent || 0}%;"></div>
                             </div>
                         </div>
                     </div>
@@ -521,7 +521,7 @@ const Templates = (() => {
                     <div class="metadata-editor-layout">
                         <div class="metadata-editor-left">
                             <div id="metadata-art-dropzone" class="metadata-art-dropzone">
-                                <img id="metadata-art-preview" src="" alt="">
+                                <img id="metadata-art-preview" src="" alt="" style="display: none;">
                                 <div class="dropzone-overlay">
                                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -613,6 +613,13 @@ const Templates = (() => {
                                 <div style="font-size: 12px; color: var(--text-secondary);">Standardize capitalization and remove junk</div>
                             </div>
                         </label>
+                        <label class="check-option" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                            <input type="checkbox" id="check-genres" checked style="width: 20px; height: 20px; accent-color: var(--accent);">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; font-size: 15px;">Genres</div>
+                                <div style="font-size: 12px; color: var(--text-secondary);">Tag tracks with genres from MusicBrainz/Last.fm</div>
+                            </div>
+                        </label>
                     </div>
 
                     <div id="check-progress-container" class="check-progress-container hidden">
@@ -621,7 +628,7 @@ const Templates = (() => {
                             <span id="check-progress-percent">0%</span>
                         </div>
                         <div class="progress-track">
-                            <div id="check-progress-bar" class="progress-fill"></div>
+                            <div id="check-progress-bar"></div>
                         </div>
                     </div>
 
@@ -1035,10 +1042,10 @@ const UI = (() => {
                 this.renderTrackList([Playback.currentTrack], queueNowPlaying, false, null, false, false);
             }
             if (queueUserList) {
-                this.renderTrackList(Playback.userQueue, queueUserList, false, null, false, false);
+                this.renderTrackList(Playback.queue, queueUserList, false, null, false, false);
             }
             if (queueContextList) {
-                const nextInContext = Playback.currentPlaylistContext.slice(Playback.currentIndex + 1);
+                const nextInContext = Playback.currentPlaylistContext.slice(Playback.currentTrackIndex + 1);
                 this.renderTrackList(nextInContext, queueContextList, false, null, false, false);
             }
         },

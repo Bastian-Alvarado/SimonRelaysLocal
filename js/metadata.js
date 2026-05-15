@@ -126,7 +126,7 @@ const Metadata = (function() {
                     s.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
                 ).filter(Boolean).join(', ')
             },
-            coverArt: null
+            coverArt: newCoverArtBase64
         };
 
         const res = await fetch(`${config.serverBaseUrl}/api/update-metadata`, {
@@ -382,7 +382,7 @@ const Metadata = (function() {
                 restoreBtn.addEventListener('click', async () => {
                     if (!currentTrack || !confirm('Restore this track to its original metadata?')) return;
                     try {
-                        const res = await fetch(`${config.serverBaseUrl}/api/restore-metadata`, {
+                        const res = await fetch(`${config.serverBaseUrl}/api/restore-backup`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ relativePath: currentTrack.relativePath, isLocal: !!currentTrack.isLocal })
@@ -430,6 +430,15 @@ const Metadata = (function() {
             }
 
             getEl(config.selectors.title).textContent = "Edit Song Information";
+
+            // Set initial cover preview
+            const preview = getEl(config.selectors.art.preview);
+            if (preview && track.metadata && track.metadata.hasCover && config.callbacks.getSharedCoverUrl) {
+                preview.src = config.callbacks.getSharedCoverUrl(track.relativePath, track.metadata.artist, track.metadata.album);
+                preview.style.display = 'block';
+            } else if (preview) {
+                preview.style.display = 'none';
+            }
             
             // Toggle visibility
             const titleGroup = getEl(config.selectors.fields.title).closest('.input-group');
@@ -466,6 +475,15 @@ const Metadata = (function() {
 
             getEl(config.selectors.title).textContent = "Edit Album Information";
 
+            // Set initial cover preview
+            const preview = getEl(config.selectors.art.preview);
+            if (preview && albumInfo.coverTrackPath && config.callbacks.getSharedCoverUrl) {
+                preview.src = config.callbacks.getSharedCoverUrl(albumInfo.coverTrackPath, albumInfo.artist, albumInfo.name);
+                preview.style.display = 'block';
+            } else if (preview) {
+                preview.style.display = 'none';
+            }
+
             // Toggle visibility
             const titleGroup = getEl(config.selectors.fields.title).closest('.input-group');
             const yearGroup = getEl(config.selectors.fields.year).closest('.input-group');
@@ -480,17 +498,6 @@ const Metadata = (function() {
             const restoreBtn = getEl(config.selectors.buttons.restore);
             if (restoreBtn) restoreBtn.style.display = 'none';
 
-            // Show current album cover
-            const preview = getEl(config.selectors.art.preview);
-            if (preview) {
-                if (albumInfo.coverTrackPath && config.callbacks.getSharedCoverUrl) {
-                    preview.src = config.callbacks.getSharedCoverUrl(albumInfo.coverTrackPath, albumInfo.artist, albumInfo.name);
-                    preview.style.display = 'block';
-                } else {
-                    preview.src = '';
-                    preview.style.display = 'none';
-                }
-            }
 
             getEl(config.selectors.modal).classList.remove('hidden');
         },

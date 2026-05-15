@@ -17,7 +17,17 @@ const State = (() => {
         pendingDownloads: new Map(),   // url -> progress (0-1)
         sessionHistory: [],            // recently played URLs
         sessionAffinity: { artists: {}, genres: {} },
-        currentActiveCoverUrl: null
+        currentActiveCoverUrl: null,
+        uploadState: {
+            isUploading: false,
+            successCount: 0,
+            errorCount: 0,
+            totalFiles: 0,
+            currentFileName: '',
+            overallPercent: 0,
+            currentFilePercent: 0,
+            statusText: ''
+        }
     };
 
     // Callback registry for state changes
