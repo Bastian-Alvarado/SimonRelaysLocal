@@ -78,36 +78,50 @@ const Playback = (() => {
         const sourceLength = currentPlaylistContext._sourceLength || currentPlaylistContext.length;
         shuffledIndices = [];
         
-        // 1. Maintain played tracks in linear order at the start
-        // This prevents them from being re-added to the "Up Next" pool
         let playedIndices = [];
-        for (let i = 0; i < startIndex; i++) {
-            if (i < sourceLength) playedIndices.push(i);
-        }
-
-        // 2. Collect upcoming source tracks
         let upcomingIndices = [];
-        for (let i = startIndex + 1; i < sourceLength; i++) {
-            upcomingIndices.push(i);
+
+        if (startIndex === undefined || startIndex === null || startIndex === -1) {
+            // Fresh shuffle for the whole source
+            for (let i = 0; i < sourceLength; i++) {
+                upcomingIndices.push(i);
+            }
+            // Shuffle them all
+            for (let i = upcomingIndices.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [upcomingIndices[i], upcomingIndices[j]] = [upcomingIndices[j], upcomingIndices[i]];
+            }
+            shuffledIndices = [...upcomingIndices];
+            currentShufflePointer = 0;
+        } else {
+            // Maintain played tracks in linear order at the start
+            // This prevents them from being re-added to the "Up Next" pool
+            for (let i = 0; i < startIndex; i++) {
+                if (i < sourceLength) playedIndices.push(i);
+            }
+
+            // Collect upcoming source tracks
+            for (let i = startIndex + 1; i < sourceLength; i++) {
+                upcomingIndices.push(i);
+            }
+
+            // Fisher-Yates shuffle ONLY the upcoming source tracks
+            for (let i = upcomingIndices.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [upcomingIndices[i], upcomingIndices[j]] = [upcomingIndices[j], upcomingIndices[i]];
+            }
+
+            // Combine: Played -> Current -> Shuffled Upcoming
+            shuffledIndices = [...playedIndices, startIndex, ...upcomingIndices];
+            currentShufflePointer = startIndex;
         }
 
-        // 3. Fisher-Yates shuffle ONLY the upcoming source tracks
-        for (let i = upcomingIndices.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [upcomingIndices[i], upcomingIndices[j]] = [upcomingIndices[j], upcomingIndices[i]];
-        }
-
-        // 4. Combine: Played -> Current -> Shuffled Upcoming
-        shuffledIndices = [...playedIndices, startIndex, ...upcomingIndices];
-
-        // 5. Append recommendation indices linearly at the very end
+        // Append recommendation indices linearly at the very end
         for (let i = sourceLength; i < currentPlaylistContext.length; i++) {
             if (i !== startIndex) {
                 shuffledIndices.push(i);
             }
         }
-
-        currentShufflePointer = startIndex;
     }
 
     function updateMediaSession(track) {
@@ -440,7 +454,7 @@ const Playback = (() => {
                     currentShufflePointer++;
                     nextIdx = shuffledIndices[currentShufflePointer];
                 } else if (repeatMode === 1) { // Repeat All
-                    generateShuffleQueue();
+                    generateShuffleQueue(-1); // Trigger a fresh shuffle for the entire context
                     nextIdx = shuffledIndices[0];
                 }
             } else {

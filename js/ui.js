@@ -1055,8 +1055,8 @@ const UI = (() => {
                 this.renderTrackList(Playback.queue, queueUserList, false, null, false, false);
             }
             if (queueContextList) {
-                const nextInContext = Playback.currentPlaylistContext.slice(Playback.currentTrackIndex + 1);
-                this.renderTrackList(nextInContext, queueContextList, false, null, false, false);
+                const upcoming = Playback.upcomingTracks;
+                this.renderTrackList(upcoming, queueContextList, false, null, false, false);
             }
         },
 
