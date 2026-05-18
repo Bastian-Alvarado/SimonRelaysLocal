@@ -1180,7 +1180,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 State.set('uploadState', { ...uploadState });
 
                 if (uploadState.successCount > 0) {
-                    if (typeof initializeMusicLibrary === 'function') await initializeMusicLibrary();
+                    if (typeof initializeMusicLibrary === 'function') await initializeMusicLibrary(true);
                 }
                 
                 setTimeout(() => {
@@ -1252,7 +1252,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         refreshStatus.style.color = '#4caf50';
                     }
                     if (typeof initializeMusicLibrary === 'function') {
-                        await initializeMusicLibrary();
+                        await initializeMusicLibrary(true);
                     }
                 } catch (e) {
                     console.error('Failed to refresh library', e);
@@ -2003,8 +2003,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ΓöÇΓöÇ Music Library Initialization ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-    async function initializeMusicLibrary() {
-        if (window.isAppInitialized) return;
+    async function initializeMusicLibrary(force = false) {
+        if (window.isAppInitialized && !force) return;
         
         try {
             if (libraryLoadingOverlay) libraryLoadingOverlay.classList.remove('hidden');
@@ -2018,6 +2018,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             await fetchLikes();
             renderHomeGrid();
+            
+            // Dynamically refresh the currently active view if force-reloaded
+            if (force && history.state && history.state.viewId) {
+                const { viewId, stateData } = history.state;
+                if (viewId === 'album' && stateData && stateData.albumInfo) {
+                    const freshAlbums = State.get('albumsData');
+                    const freshAlbum = freshAlbums[stateData.albumInfo.name];
+                    if (freshAlbum) {
+                        openAlbumView(freshAlbum, false);
+                    }
+                } else if (viewId === 'artist' && stateData && stateData.artistName) {
+                    openArtistView(stateData.artistName, false);
+                } else if (viewId === 'playlist' && stateData && stateData.playlist) {
+                    openPlaylistView(stateData.playlist, false);
+                } else if (viewId === 'likes') {
+                    renderLikesView();
+                } else if (viewId === 'history') {
+                    renderHistoryView();
+                } else if (viewId === 'downloads') {
+                    fetchDownloads();
+                } else if (viewId === 'search' && stateData && stateData.query !== undefined) {
+                    Search.renderSearchResults(stateData.query);
+                }
+            }
             
             if (libraryLoadingOverlay) libraryLoadingOverlay.classList.add('hidden');
         } catch (error) {
@@ -3529,7 +3553,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         },
         callbacks: {
-            onLibraryRefresh: async () => await initializeMusicLibrary(),
+            onLibraryRefresh: async () => await initializeMusicLibrary(true),
             onAlbumRefresh: async (albumName) => {
                 const album = State.get('albumsData')[albumName];
                 if (album) openAlbumView(album, false);
