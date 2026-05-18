@@ -317,6 +317,16 @@ const Templates = (() => {
                         </div>
                         <div id="transcoder-status" class="local-path-status"></div>
                     </div>
+                    <div class="settings-row">
+                        <div class="settings-row-info">
+                            <div class="settings-row-label">Refresh Music Library</div>
+                            <div class="settings-row-sub">Scan the server's audio directory for newly added or modified music files.</div>
+                        </div>
+                        <div class="settings-input-group">
+                            <button id="refresh-library-btn" class="settings-save-btn">Scan for New Songs</button>
+                        </div>
+                        <div id="refresh-library-status" class="local-path-status"></div>
+                    </div>
                 </div>
 
 
@@ -795,7 +805,7 @@ const UI = (() => {
                 });
 
                 // Re-wire event listeners that need the track/index
-                if (window.setupTrackListeners) window.setupTrackListeners(trackItem, track, index, container, playlistId, canEdit);
+                if (window.setupTrackListeners) window.setupTrackListeners(trackItem, track, index, container, playlistId, canEdit, tracksToRender);
 
                 fragment.appendChild(trackItem);
             });

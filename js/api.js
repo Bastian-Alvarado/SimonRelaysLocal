@@ -132,6 +132,11 @@ const API = (() => {
         async triggerTranscoder() {
             const res = await request('/api/trigger-transcoder', { method: 'POST' });
             return res.json();
+        },
+        
+        async refreshLibrary() {
+            const res = await request('/api/refresh-library', { method: 'POST' });
+            return res.json();
         }
     };
 })();

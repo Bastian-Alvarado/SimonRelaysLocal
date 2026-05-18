@@ -1232,6 +1232,44 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
+        // Refresh Music Library handler
+        const refreshBtn = body.querySelector('#refresh-library-btn');
+        const refreshStatus = body.querySelector('#refresh-library-status');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async () => {
+                refreshBtn.disabled = true;
+                const originalText = refreshBtn.textContent;
+                refreshBtn.textContent = 'Scanning...';
+                if (refreshStatus) {
+                    refreshStatus.textContent = 'Scanning server directory and updating cache...';
+                    refreshStatus.style.color = 'var(--text-secondary)';
+                }
+
+                try {
+                    const result = await API.refreshLibrary();
+                    if (refreshStatus) {
+                        refreshStatus.textContent = `Library scanned successfully! Total songs: ${result.trackCount}`;
+                        refreshStatus.style.color = '#4caf50';
+                    }
+                    if (typeof initializeMusicLibrary === 'function') {
+                        await initializeMusicLibrary();
+                    }
+                } catch (e) {
+                    console.error('Failed to refresh library', e);
+                    if (refreshStatus) {
+                        refreshStatus.textContent = 'Failed to scan: ' + e.message;
+                        refreshStatus.style.color = '#f44336';
+                    }
+                } finally {
+                    refreshBtn.textContent = originalText;
+                    refreshBtn.disabled = false;
+                    setTimeout(() => {
+                        if (refreshStatus) refreshStatus.textContent = '';
+                    }, 5000);
+                }
+            });
+        }
+
         filterSettings();
 
     };
@@ -2265,7 +2303,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return normalize(u1) === normalize(u2);
     }
 
-    function setupTrackListeners(trackItem, track, index, container, playlistId, canEdit) {
+    function setupTrackListeners(trackItem, track, index, container, playlistId, canEdit, contextTracks = null) {
         // Context Menu Handler
         const moreBtn = trackItem.querySelector('.track-item-more-btn');
         if (moreBtn) {
@@ -2391,7 +2429,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             if (container.id !== 'queue-now-playing') {
-                Playback.playTrack(track);
+                if (contextTracks && contextTracks.length > 0) {
+                    Playback.playTrack(track, contextTracks, index);
+                } else {
+                    Playback.playTrack(track);
+                }
             }
         });
     }
