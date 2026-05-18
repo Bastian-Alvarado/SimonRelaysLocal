@@ -703,6 +703,7 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 30px;
     padding-bottom: 40px;
+    align-content: start;
 }
 
 .album-card {
@@ -1964,6 +1965,10 @@ body {
     background: linear-gradient(135deg, var(--gradient-2), var(--gradient-1));
     flex-shrink: 0;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.playlist-collage.custom-cover {
+    display: block;
 }
 
 .playlist-collage img {
