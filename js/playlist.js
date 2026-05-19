@@ -287,7 +287,7 @@ const Playlist = (function() {
                 <div class="playlist-art-interactive album-hero-cover" ${coverTooltip}>
                     ${artHtml}
                     ${overlayHtml}
-                    ${!isOwn ? '<div class="community-badge">Community</div>' : ''}
+                    ${playlist.isSystem || (playlist.id && playlist.id.startsWith('discover-')) ? '<div class="community-badge">Discover</div>' : (!isOwn ? '<div class="community-badge">Community</div>' : '')}
                 </div>
                 <div class="album-hero-info">
                     <div class="album-hero-label">Playlist</div>

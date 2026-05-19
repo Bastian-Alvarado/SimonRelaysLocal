@@ -6,11 +6,11 @@
 const Templates = (() => {
     return {
         TrackItem(track, index, options = {}) {
-            const { 
-                isPlaylistView, canEdit, isQueueView, showTrackNumbers, 
-                isDownloaded, isDownloading, downloadProgress, isLiked, 
+            const {
+                isPlaylistView, canEdit, isQueueView, showTrackNumbers,
+                isDownloaded, isDownloading, downloadProgress, isLiked,
                 currentUser, isUnsupported, isTrackActive, getSharedCoverUrl,
-                getQualityLabel, splitArtists 
+                getQualityLabel, splitArtists
             } = options;
 
             const title = (track.metadata && track.metadata.title) ? track.metadata.title : track.filename;
@@ -169,10 +169,10 @@ const Templates = (() => {
         },
 
         SettingsPanel(data) {
-            const { 
-                Theme, Animations, Playback, currentCustomUrl, DEFAULT_SERVER_URL 
+            const {
+                Theme, Animations, Playback, currentCustomUrl, DEFAULT_SERVER_URL
             } = data;
-            
+
             return `
                 <div class="settings-section" data-category="appearance">
                     <div class="settings-section-title">Themes</div>
@@ -433,7 +433,7 @@ const Templates = (() => {
 
         SearchResultRow(data) {
             const { type, name, subtext, coverHtml, avatarHtml } = data;
-            
+
             let mediaHtml = '';
             // If it's an artist, we always want the avatar container (circle)
             if (type === 'Artist' || avatarHtml !== undefined) {
@@ -442,7 +442,7 @@ const Templates = (() => {
                 // For playlists and albums, we use the cover container (rounded square)
                 mediaHtml = `<div class="search-row-cover">${coverHtml || ''}</div>`;
             }
-            
+
             return `
                 ${mediaHtml}
                 <div class="search-row-info">
@@ -466,7 +466,7 @@ const Templates = (() => {
             const { nextTrack, nextArtUrl } = data;
             const title = nextTrack.metadata?.title || nextTrack.filename;
             const artist = nextTrack.metadata?.artist || 'Unknown Artist';
-            
+
             return `
                 <div class="immersive-up-next-label">Up Next</div>
                 <div class="immersive-up-next-row">
@@ -777,7 +777,7 @@ const UI = (() => {
         renderTrackList(tracks, container, isPlaylistView = false, playlistId = null, canEdit = false, showTrackNumbers = false) {
             if (!container) return;
             container.innerHTML = '';
-            
+
             const tracksToRender = tracks.map((track, index) => {
                 if (track.isServer) return track;
                 const libTrack = State.get('allTracks').find(t => t.url === track.url);
@@ -826,7 +826,7 @@ const UI = (() => {
 
             const count = Theme.calculateItemsPerRow();
             const recentAlbums = albumsArray.slice(0, count);
-            
+
             recentAlbums.forEach(albumInfo => {
                 const card = this.createAlbumCard(albumInfo, {
                     artHtml: this.getAlbumArtHtml(albumInfo),
@@ -861,7 +861,7 @@ const UI = (() => {
 
             let pictureUrl = null;
             let coverHtml = `<div class="album-hero-cover" style="background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));"></div>`;
-            
+
             if (albumInfo.coverTrackPath) {
                 pictureUrl = window.getSharedCoverUrl(albumInfo.coverTrackPath, albumInfo.artist, albumInfo.name);
                 coverHtml = `<img src="${pictureUrl}" class="album-hero-cover" alt="Album Cover">`;
@@ -893,8 +893,8 @@ const UI = (() => {
             const yearStr = earliestYear === 9999 ? 'Unknown Year' : earliestYear;
             const durationStr = totalDuration > 0 ? `, ${window.formatHeroDuration(totalDuration)}` : '';
             const songCountStr = `${albumInfo.tracks.length} song${albumInfo.tracks.length !== 1 ? 's' : ''}`;
-            
-            let genresHtml = albumGenres.size > 0 
+
+            let genresHtml = albumGenres.size > 0
                 ? Array.from(albumGenres).map(g => `<span class="genre-tag">${g}</span>`).join('')
                 : `<span class="genre-tag no-genre">NO GENRE TAGS</span>`;
 
@@ -998,7 +998,7 @@ const UI = (() => {
                 `;
                 const avatar = card.querySelector('.artist-grid-avatar');
                 Theme.applyArtistVisuals(artistName, avatar, true);
-                
+
                 card.addEventListener('click', () => window.openArtistView(artistName));
                 recentArtistList.appendChild(card);
             });
@@ -1057,7 +1057,7 @@ const UI = (() => {
             const queueUserList = document.getElementById('queue-user-list');
             const queueContextList = document.getElementById('queue-context-list');
             const queueNowPlaying = document.getElementById('queue-now-playing');
-            
+
             if (queueNowPlaying && Playback.currentTrack) {
                 this.renderTrackList([Playback.currentTrack], queueNowPlaying, false, null, false, false);
             }
@@ -1075,7 +1075,7 @@ const UI = (() => {
             this.renderContextMenu(document.getElementById('track-context-menu'));
             this.renderCreatePlaylistModal(document.getElementById('create-playlist-modal'));
             this.renderCheckMetadataModal(document.getElementById('check-metadata-modal'));
-            
+
             const depModal = document.getElementById('dependency-modal');
             if (depModal) depModal.innerHTML = Templates.DependencyModal();
 
@@ -1104,7 +1104,7 @@ const UI = (() => {
                 okBtn.removeEventListener('click', hide);
             };
             okBtn.onclick = hide;
-            
+
             modal.onclick = (e) => {
                 if (e.target === modal) hide();
             };

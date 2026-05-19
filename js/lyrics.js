@@ -3,12 +3,12 @@
  * Handles fetching, parsing, rendering, and interactive synchronization of lyrics.
  */
 
-const Lyrics = (function() {
+const Lyrics = (function () {
     // --- State ---
     let lyricsData = [];
     let currentLyricIndex = -1;
     let plainLyricsCache = '';
-    
+
     let currentLyricsTitle = '';
     let currentLyricsArtist = '';
     let currentLyricsAlbum = '';
@@ -30,7 +30,7 @@ const Lyrics = (function() {
     let callbacks = {};
 
     return {
-        init: function(config) {
+        init: function (config) {
             container = config.container;
             immersiveView = config.immersiveView;
             actionBar = config.actionBar;
@@ -42,7 +42,7 @@ const Lyrics = (function() {
         get lyricsData() { return lyricsData; },
         get currentLyricIndex() { return currentLyricIndex; },
 
-        fetch: async function(track) {
+        fetch: async function (track) {
             if (!container) return;
 
             const title = (track.metadata && track.metadata.title) ? track.metadata.title : track.filename;
@@ -52,15 +52,15 @@ const Lyrics = (function() {
             const cachedLyrics = track._cachedLyrics || null;
 
             lyricsTrackUrl = track.relativePath || '';
-            
+
             // UI Reset
             container.classList.remove('editor-mode');
             container.innerHTML = '<div class="lyrics-placeholder" style="color:rgba(255,255,255,0.7);">Loading lyrics...</div>';
-            
+
             lyricsData = [];
             currentLyricIndex = -1;
             plainLyricsCache = '';
-            
+
             currentLyricsTitle = title;
             currentLyricsArtist = artist;
             currentLyricsAlbum = album;
@@ -112,7 +112,7 @@ const Lyrics = (function() {
             }
         },
 
-        render: function() {
+        render: function () {
             if (!container) return;
             container.innerHTML = '';
 
@@ -121,8 +121,8 @@ const Lyrics = (function() {
                 imEl.className = 'lyric-line';
                 imEl.textContent = line.text;
 
-                imEl.addEventListener('click', () => { 
-                    if (window.Playback) window.Playback.seek(line.time); 
+                imEl.addEventListener('click', () => {
+                    if (window.Playback) window.Playback.seek(line.time);
                 });
 
                 line.immersiveElement = imEl;
@@ -130,7 +130,7 @@ const Lyrics = (function() {
             });
         },
 
-        sync: function() {
+        sync: function () {
             if (!lyricsData.length || !window.Playback || !window.Playback.currentTrack) return;
 
             const currentTime = window.Playback.currentTime;
@@ -169,7 +169,7 @@ const Lyrics = (function() {
             }
         },
 
-        showNoSyncState: function() {
+        showNoSyncState: function () {
             if (!container) return;
             container.classList.add('editor-mode');
             container.innerHTML = `
@@ -187,7 +187,7 @@ const Lyrics = (function() {
             this.renderActionBar(false, false);
         },
 
-        renderActionBar: function(hasLyrics = false, isCustom = false) {
+        renderActionBar: function (hasLyrics = false, isCustom = false) {
             if (!actionBar) return;
             actionBar.innerHTML = '';
             if (!lyricsTrackUrl) return;
@@ -230,7 +230,7 @@ const Lyrics = (function() {
             }
         },
 
-        showEditor: function(initialText = '') {
+        showEditor: function (initialText = '') {
             if (!container) return;
             container.classList.add('editor-mode');
             container.innerHTML = `
@@ -246,9 +246,9 @@ const Lyrics = (function() {
             `;
 
             document.getElementById('lyrics-editor-cancel-btn').addEventListener('click', () => {
-                if (lyricsData.length > 0) { 
-                    container.classList.remove('editor-mode'); 
-                    this.render(); 
+                if (lyricsData.length > 0) {
+                    container.classList.remove('editor-mode');
+                    this.render();
                 } else {
                     this.showNoSyncState();
                 }
@@ -263,7 +263,7 @@ const Lyrics = (function() {
             });
         },
 
-        startSyncSession: function(lines) {
+        startSyncSession: function (lines) {
             syncLines = lines;
             syncTimestamps = [];
             syncCurrentLineIdx = 0;
@@ -287,7 +287,7 @@ const Lyrics = (function() {
             document.addEventListener('keydown', syncKeyHandler);
         },
 
-        renderSyncSessionUI: function() {
+        renderSyncSessionUI: function () {
             const done = syncCurrentLineIdx;
             const total = syncLines.length;
             const current = syncLines[done] || null;
@@ -303,7 +303,7 @@ const Lyrics = (function() {
                     <div class="sync-stage">
                         ${current ? `<div class="sync-current-line">${current}</div>
                                <div class="sync-next-line">${next ? 'Next: ' + next : '— last line —'}</div>`
-                                  : `<div class="sync-current-line" style="color:var(--accent);">All lines synced!</div>`}
+                    : `<div class="sync-current-line" style="color:var(--accent);">All lines synced!</div>`}
                     </div>
                     <button id="sync-tap-btn" class="sync-tap-btn" ${!current ? 'disabled' : ''}>
                         <span>TAP</span>
@@ -330,9 +330,9 @@ const Lyrics = (function() {
             document.getElementById('sync-done-btn').addEventListener('click', () => this.finishSyncSession());
             document.getElementById('sync-cancel-btn').addEventListener('click', () => {
                 this.exitSyncSession();
-                if (lyricsData.length > 0) { 
-                    container.classList.remove('editor-mode'); 
-                    this.render(); 
+                if (lyricsData.length > 0) {
+                    container.classList.remove('editor-mode');
+                    this.render();
                 } else {
                     this.showNoSyncState();
                 }
@@ -343,7 +343,7 @@ const Lyrics = (function() {
             }
         },
 
-        tapSync: function() {
+        tapSync: function () {
             if (syncCurrentLineIdx >= syncLines.length) return;
             const currentTime = window.Playback ? window.Playback.currentTime : 0;
             syncTimestamps.push(currentTime);
@@ -351,7 +351,7 @@ const Lyrics = (function() {
             this.renderSyncSessionUI();
         },
 
-        finishSyncSession: function() {
+        finishSyncSession: function () {
             if (syncTimestamps.length === 0) return;
 
             let lrcText = '';
@@ -374,12 +374,12 @@ const Lyrics = (function() {
             this.renderActionBar(true, true);
         },
 
-        exitSyncSession: function() {
+        exitSyncSession: function () {
             if (syncKeyHandler) document.removeEventListener('keydown', syncKeyHandler);
             syncKeyHandler = null;
         },
 
-        parseLrc: function(lrc) {
+        parseLrc: function (lrc) {
             const lines = lrc.split('\n');
             const parsed = [];
             const timeRegEx = /\[(\d+):(\d+)\.(\d+)\]/;

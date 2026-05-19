@@ -68,12 +68,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.renderRecentArtists = renderRecentArtists;
     window.fetchAndApplyArtistImage = (name, node, xl) => Theme.applyArtistVisuals(name, node, xl);
     window.switchToSearchView = () => Router.switchToView('search');
-    
+
     // Initialize Modules
     Theme.init({ serverBaseUrl });
     Stats.init({ serverBaseUrl });
     Animations.init();
-    
+
     // Populate Dynamic Shared UI
     if (window.UI) {
         UI.populateSharedContainers();
@@ -228,21 +228,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                     renderProfilePanel();
                     openProfile(false);
                     break;
-                case 'history': 
+                case 'history':
                     Router.switchToView('history');
                     renderHistoryView();
                     break;
-                case 'likes': 
+                case 'likes':
                     Router.switchToView('likes');
                     renderLikesView();
                     break;
-                case 'downloads': 
+                case 'downloads':
                     Router.switchToView('downloads');
                     fetchDownloads();
                     break;
                 case 'queue': showQueueOverlay(); break;
                 case 'immersive': showImmersiveOverlay(); break;
-                case 'stats': 
+                case 'stats':
                     Router.switchToView('stats');
                     renderStatsView();
                     break;
@@ -1104,7 +1104,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Cloud Upload handlers
         const uploadBtn = body.querySelector('#cloud-upload-btn');
         const uploadInput = body.querySelector('#cloud-upload-input');
-        
+
         if (uploadBtn && uploadInput) {
             uploadBtn.addEventListener('click', () => uploadInput.click());
             // Initial UI sync
@@ -1127,7 +1127,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
-                    
+
                     uploadState.currentFileName = file.name;
                     uploadState.overallPercent = (i / files.length) * 100;
                     uploadState.currentFilePercent = 0;
@@ -1182,7 +1182,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (uploadState.successCount > 0) {
                     if (typeof initializeMusicLibrary === 'function') await initializeMusicLibrary(true);
                 }
-                
+
                 setTimeout(() => {
                     const current = State.get('uploadState');
                     if (!current.isUploading) {
@@ -2005,20 +2005,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function initializeMusicLibrary(force = false) {
         if (window.isAppInitialized && !force) return;
-        
+
         try {
             if (libraryLoadingOverlay) libraryLoadingOverlay.classList.remove('hidden');
-            
+
             // Delegate to the modular Library system
             await Library.load();
-            
+
             // Synchronize modular state with global State
             State.set('allTracks', window.allTracks);
             State.set('albumsData', window.albumsData);
-            
+
             await fetchLikes();
             renderHomeGrid();
-            
+
             // Dynamically refresh the currently active view if force-reloaded
             if (force && history.state && history.state.viewId) {
                 const { viewId, stateData } = history.state;
@@ -2042,7 +2042,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     Search.renderSearchResults(stateData.query);
                 }
             }
-            
+
             if (libraryLoadingOverlay) libraryLoadingOverlay.classList.add('hidden');
         } catch (error) {
             console.error('[Library] Initialization failed:', error);
@@ -2305,10 +2305,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function isSameTrack(t1, t2) {
         if (!t1 || !t2) return false;
         if (t1 === t2) return true; // Identity match
-        
+
         let u1 = t1.url || '';
         let u2 = t2.url || '';
-        
+
         if (!u1 || !u2) return false;
 
         // Strip server base URL to compare relative paths if possible
@@ -3137,7 +3137,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (track.isLocal) return;
         const url = getTrackUrlForQuality(track, 'download');
 
-                State.get('pendingDownloads').set(track.url, 0.01); // show start
+        State.get('pendingDownloads').set(track.url, 0.01); // show start
 
         refreshCurrentView();
 
@@ -3159,7 +3159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 chunks.push(value);
                 loaded += value.length;
                 if (total) {
-                State.get('pendingDownloads').set(track.url, loaded / total);
+                    State.get('pendingDownloads').set(track.url, loaded / total);
 
                     refreshCurrentView();
                 }
@@ -3199,7 +3199,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             await saveTrackToIDB(track.url, blob, saveMetadata, coverBlob, lyrics);
 
             // Mark as offline in the local map
-                State.get('downloadedTracksMap').set(track.url, 'indexeddb');
+            State.get('downloadedTracksMap').set(track.url, 'indexeddb');
 
             console.log('[PWA] Track saved to IndexedDB (with assets):', track.url);
         } catch (e) {
@@ -3214,7 +3214,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function removeOfflineTrack(trackPath) {
         await deleteTrackFromIDB(trackPath);
-            State.get('downloadedTracksMap').delete(trackPath);
+        State.get('downloadedTracksMap').delete(trackPath);
 
         refreshCurrentView();
     }
@@ -3335,7 +3335,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // PWA Fallback: Sync from IndexedDB
         try {
             const tracks = await getAllDownloadedFromIDB();
-                State.get('downloadedTracksMap').clear();
+            State.get('downloadedTracksMap').clear();
 
             tracks.forEach(t => {
                 State.get('downloadedTracksMap').set(t.trackUrl, 'indexeddb');
@@ -3564,7 +3564,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     Playlist.init({
         serverBaseUrl,
-                currentUser: State.get('currentUser'),
+        currentUser: State.get('currentUser'),
         selectors: {
             hero: 'playlist-hero'
         },
@@ -3579,7 +3579,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     UI.showNotification('Sign In Required', 'Please sign in to save playlists.');
                     return;
                 }
-                
+
                 try {
                     const newName = `${playlist.name} (Shared)`;
                     const newPl = await createPlaylist(newName);

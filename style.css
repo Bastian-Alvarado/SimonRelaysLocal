@@ -1819,6 +1819,8 @@ body {
     cursor: pointer;
     transition: transform 0.2s, background 0.2s;
     min-width: 110px;
+    width: 164px;
+    max-width: 164px;
     padding: 12px;
     border-radius: 12px;
     flex-shrink: 0;
@@ -1835,7 +1837,7 @@ body {
     border-radius: 50%;
     background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
     overflow: hidden;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -4537,26 +4539,59 @@ font-weight: 500;
 /* ── Animations Module (scoped under body.animations-enabled) ────────────── */
 
 @keyframes fadeSlideIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @keyframes scaleFadeIn {
-    from { opacity: 0; transform: scale(0.97); }
-    to   { opacity: 1; transform: scale(1); }
+    from {
+        opacity: 0;
+        transform: scale(0.97);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
 
 @keyframes likeBounce {
-    0%   { transform: scale(1); }
-    30%  { transform: scale(1.35); }
-    60%  { transform: scale(0.9); }
-    100% { transform: scale(1); }
+    0% {
+        transform: scale(1);
+    }
+
+    30% {
+        transform: scale(1.35);
+    }
+
+    60% {
+        transform: scale(0.9);
+    }
+
+    100% {
+        transform: scale(1);
+    }
 }
 
 @keyframes activePulse {
-    0%   { border-color: color-mix(in srgb, var(--accent), transparent 70%); }
-    50%  { border-color: color-mix(in srgb, var(--accent), transparent 40%); }
-    100% { border-color: color-mix(in srgb, var(--accent), transparent 70%); }
+    0% {
+        border-color: color-mix(in srgb, var(--accent), transparent 70%);
+    }
+
+    50% {
+        border-color: color-mix(in srgb, var(--accent), transparent 40%);
+    }
+
+    100% {
+        border-color: color-mix(in srgb, var(--accent), transparent 70%);
+    }
 }
 
 /* Staggered item entry — items start invisible, animate in with delay */
@@ -4586,6 +4621,7 @@ body.animations-enabled .play-pop {
 
 /* Respect OS-level reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
+
     body.animations-enabled .anim-stagger-item,
     body.animations-enabled .anim-view-enter,
     body.animations-enabled .track-item.active,
