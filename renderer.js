@@ -556,10 +556,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (closeImmersiveBtn) {
         closeImmersiveBtn.addEventListener('click', toggleImmersiveView);
     }
+    const toggleLyricsBtn = document.getElementById('toggle-lyrics-btn');
+    if (toggleLyricsBtn) {
+        toggleLyricsBtn.addEventListener('click', () => {
+            const isHidden = immersiveView.classList.toggle('hide-lyrics');
+            toggleLyricsBtn.classList.toggle('active-toggled', isHidden);
+        });
+    }
+
     const toggleArtBtn = document.getElementById('toggle-art-btn');
     if (toggleArtBtn) {
         toggleArtBtn.addEventListener('click', () => {
-            immersiveView.classList.toggle('hide-art');
+            const isHidden = immersiveView.classList.toggle('hide-art');
+            toggleArtBtn.classList.toggle('active-toggled', isHidden);
         });
     }
 
@@ -610,6 +619,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Populate Up Next badge
         updateImmersiveUpNext();
+
+        // Start immersive audio visualizer
+        if (window.Visualizer) {
+            Visualizer.init();
+            Visualizer.start();
+        }
     }
 
     function hideImmersiveOverlay() {
@@ -622,6 +637,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.body.classList.remove('immersive-active');
             const playerBar = document.querySelector('.player-bar');
             if (playerBar) playerBar.classList.remove('fullscreen-active');
+
+            // Stop immersive audio visualizer
+            if (window.Visualizer) {
+                Visualizer.stop();
+            }
         }
     }
 
@@ -1007,6 +1027,54 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (immersiveBgWrapper) {
                     immersiveBgWrapper.classList.toggle('aurora-enabled', enabled);
                 }
+            });
+        }
+
+        const visualizerModeSelect = document.getElementById('setting-visualizer-mode');
+        const visualizerUploadRow = document.getElementById('visualizer-upload-row');
+        const visualizerFileInput = document.getElementById('setting-visualizer-file');
+        const visualizerUploadBtn = document.getElementById('setting-visualizer-upload-btn');
+        const visualizerFileName = document.getElementById('setting-visualizer-file-name');
+
+        if (visualizerModeSelect) {
+            visualizerModeSelect.addEventListener('change', (e) => {
+                const mode = e.target.value;
+                if (window.Visualizer) {
+                    Visualizer.setMode(mode);
+                }
+                
+                if (visualizerUploadRow) {
+                    if (mode === 'custom') {
+                        visualizerUploadRow.classList.remove('hidden');
+                    } else {
+                        visualizerUploadRow.classList.add('hidden');
+                    }
+                }
+            });
+        }
+
+        if (visualizerUploadBtn && visualizerFileInput) {
+            visualizerUploadBtn.addEventListener('click', () => {
+                visualizerFileInput.click();
+            });
+        }
+
+        if (visualizerFileInput) {
+            visualizerFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                if (visualizerFileName) {
+                    visualizerFileName.textContent = file.name;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    if (window.Visualizer) {
+                        Visualizer.handleCustomUpload(event.target.result);
+                    }
+                };
+                reader.readAsText(file);
             });
         }
 
@@ -3624,6 +3692,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         actionBar: document.getElementById('lyrics-action-bar')
     });
 
+    if (window.Visualizer) {
+        Visualizer.init();
+    }
+
     Playback.init({
         onTrackChange: (track) => {
             updateNowPlayingUI(track);
@@ -3631,6 +3703,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (queueView && queueView.classList.contains('active')) renderQueueView();
             refreshCurrentView(); // Update active highlights in albums/playlists
             _fillInfiniteBuffer();
+            if (window.Visualizer) {
+                Visualizer.start();
+            }
         },
         onPlayStateChange: (isPlaying) => {
             const icon = document.getElementById('play-icon');
@@ -3647,6 +3722,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+            }
+
+            if (window.Visualizer) {
+                if (isPlaying) {
+                    Visualizer.start();
+                } else {
+                    Visualizer.stop();
+                }
             }
         },
         onProgress: (seek, duration) => {

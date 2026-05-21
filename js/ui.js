@@ -217,6 +217,31 @@ const Templates = (() => {
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
+                    <div class="settings-row" style="flex-direction: row; justify-content: space-between; align-items: center;">
+                        <div class="settings-row-info">
+                            <div class="settings-row-label">Visualizer Effect</div>
+                            <div class="settings-row-sub">Choose a real-time reactive audio visualizer for Immersive Mode.</div>
+                        </div>
+                        <select id="setting-visualizer-mode" class="settings-text-input" style="width: 200px; background-color: #1a1a20; color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 6px 12px; font-weight: 600;">
+                            <option value="none" ${localStorage.getItem('activeVisualizer') === 'none' || !localStorage.getItem('activeVisualizer') ? 'selected' : ''}>None (Auroras Only)</option>
+                            <option value="bars" ${localStorage.getItem('activeVisualizer') === 'bars' ? 'selected' : ''}>Retro Bars (Canvas)</option>
+                            <option value="ring" ${localStorage.getItem('activeVisualizer') === 'ring' ? 'selected' : ''}>Pulse Ring (Canvas)</option>
+                            <option value="custom" ${localStorage.getItem('activeVisualizer') === 'custom' ? 'selected' : ''}>Custom HTML (User Upload)</option>
+                        </select>
+                    </div>
+                    <div id="visualizer-upload-row" class="settings-row ${localStorage.getItem('activeVisualizer') === 'custom' ? '' : 'hidden'}" style="flex-direction: row; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 12px;">
+                        <div class="settings-row-info">
+                            <div class="settings-row-label">Upload Custom Visualizer</div>
+                            <div class="settings-row-sub">Select a self-contained .html visualizer file.</div>
+                        </div>
+                        <div class="settings-input-group" style="gap: 12px; align-items: center;">
+                            <input type="file" id="setting-visualizer-file" accept=".html" style="display: none;">
+                            <button id="setting-visualizer-upload-btn" class="settings-save-btn" style="padding: 6px 14px;">Select File</button>
+                            <span id="setting-visualizer-file-name" style="font-size: 12px; color: var(--text-secondary); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; line-height: 24px;">
+                                ${localStorage.getItem('customVisualizerHtml') ? 'custom_visualizer.html' : 'No file selected'}
+                            </span>
+                        </div>
+                    </div>
                     <div class="settings-row">
                         <div class="settings-row-info">
                             <div class="settings-row-label">UI Scaling</div>

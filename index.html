@@ -16,6 +16,27 @@
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <script>
+        // Bulletproof global CORS override for all <audio> elements (ensures visualizer works for HTML5 fallbacks)
+        (function() {
+            const OriginalAudio = window.Audio;
+            window.Audio = function() {
+                const audio = new OriginalAudio(...arguments);
+                audio.crossOrigin = 'anonymous';
+                return audio;
+            };
+            window.Audio.prototype = OriginalAudio.prototype;
+
+            const originalCreateElement = document.createElement;
+            document.createElement = function(tagName, options) {
+                const el = originalCreateElement.call(document, tagName, options);
+                if (tagName && tagName.toLowerCase() === 'audio') {
+                    el.crossOrigin = 'anonymous';
+                }
+                return el;
+            };
+        })();
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.4/howler.min.js"></script>
     <script src="js/state.js"></script>
     <script src="js/api.js"></script>
@@ -408,9 +429,19 @@
                     <div class="immersive-glow-blob blob-left"></div>
                     <div class="immersive-glow-blob blob-right"></div>
                     <div class="immersive-bg-dimmer"></div>
+                    <div id="immersive-visualizer-container"></div>
                 </div>
 
                 <div class="immersive-controls-top">
+                    <button id="toggle-lyrics-btn" class="immersive-control-btn" title="Toggle Lyrics">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 20l4-12 4 12"></path>
+                            <path d="M6 14h4"></path>
+                            <path d="M18 12v8"></path>
+                            <path d="M18 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path>
+                        </svg>
+                    </button>
                     <button id="toggle-art-btn" class="immersive-control-btn" title="Toggle Album Art">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2.5">
@@ -927,6 +958,7 @@
         <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-database-compat.js"></script>
         <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
 
+        <script src="js/visualizer.js"></script>
         <script src="renderer.js"></script>
         <script>
             if ('serviceWorker' in navigator) {

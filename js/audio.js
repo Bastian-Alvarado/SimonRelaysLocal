@@ -206,6 +206,7 @@ const Playback = (() => {
         // --- State Getters ---
         get isPlaying() { return isPlayingState; },
         get currentTrack() { return globalPlayingTrack; },
+        get currentHowl() { return currentHowl; },
         get duration() {
             let howlDur = currentHowl ? currentHowl.duration() : 0;
             if (howlDur && isFinite(howlDur) && howlDur > 0) return howlDur;
@@ -301,7 +302,7 @@ const Playback = (() => {
                 } else {
                     currentHowl = new Howl({
                         src: [url],
-                        html5: true,
+                        html5: false,
                         format: ['mp3', 'flac', 'm4a', 'wav'],
                         autoplay: false,
                         volume: 0
@@ -402,7 +403,7 @@ const Playback = (() => {
                     
                     nextHowl = new Howl({
                         src: [url],
-                        html5: true,
+                        html5: false,
                         format: ['mp3', 'flac', 'm4a', 'wav'],
                         autoplay: false,
                         preload: true
