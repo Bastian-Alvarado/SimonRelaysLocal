@@ -204,11 +204,15 @@ body {
 
 #immersive-bg,
 #immersive-bg-alt {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
     filter: blur(80px) saturate(2);
     transform: scale(1.1);
+    z-index: 1;
 }
 
 .immersive-bg-dimmer {
@@ -219,6 +223,70 @@ body {
     height: 100%;
     background: rgba(10, 10, 15, 0.4);
     z-index: 2;
+}
+
+/* ── Immersive Ambient Aurora Blobs ── */
+.immersive-glow-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 1s cubic-bezier(0.25, 0.8, 0.25, 1);
+    mix-blend-mode: screen;
+    z-index: 3; /* Render on top of the dimmer overlay for rich, vibrant glows */
+}
+
+.immersive-bg-wrapper.aurora-enabled .immersive-glow-blob {
+    opacity: 0.55; /* Soft, atmospheric glow */
+}
+
+.immersive-glow-blob.blob-left {
+    top: -15%;
+    left: -15%;
+    width: 65vw;
+    height: 65vw;
+    background: var(--immersive-gradient-1, var(--gradient-1, #e11d48));
+    animation: immersiveFloatLeft 28s ease-in-out infinite alternate;
+}
+
+.immersive-glow-blob.blob-right {
+    bottom: -15%;
+    right: -15%;
+    width: 70vw;
+    height: 70vw;
+    background: var(--immersive-gradient-2, var(--gradient-2, #f43f5e));
+    animation: immersiveFloatRight 34s ease-in-out infinite alternate;
+}
+
+@keyframes immersiveFloatLeft {
+    0% {
+        transform: translate(0, 0) scale(1) rotate(0deg);
+        filter: blur(120px) hue-rotate(0deg);
+    }
+    50% {
+        transform: translate(12%, 18%) scale(1.15) rotate(180deg);
+        filter: blur(140px) hue-rotate(45deg);
+    }
+    100% {
+        transform: translate(-10%, 8%) scale(0.85) rotate(360deg);
+        filter: blur(120px) hue-rotate(-30deg);
+    }
+}
+
+@keyframes immersiveFloatRight {
+    0% {
+        transform: translate(0, 0) scale(1) rotate(0deg);
+        filter: blur(120px) hue-rotate(0deg);
+    }
+    50% {
+        transform: translate(-15%, -12%) scale(0.9) rotate(-180deg);
+        filter: blur(140px) hue-rotate(-45deg);
+    }
+    100% {
+        transform: translate(8%, -18%) scale(1.2) rotate(-360deg);
+        filter: blur(120px) hue-rotate(30deg);
+    }
 }
 
 .immersive-content {
@@ -1819,8 +1887,6 @@ body {
     cursor: pointer;
     transition: transform 0.2s, background 0.2s;
     min-width: 110px;
-    width: 164px;
-    max-width: 164px;
     padding: 12px;
     border-radius: 12px;
     flex-shrink: 0;

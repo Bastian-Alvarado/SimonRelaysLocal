@@ -598,6 +598,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const playerBar = document.querySelector('.player-bar');
         if (playerBar) playerBar.classList.add('fullscreen-active');
 
+        // Initialize immersive aurora background state
+        const glowEnabled = localStorage.getItem('immersiveBgGlowEnabled') !== 'false';
+        const immersiveBgWrapper = document.querySelector('.immersive-bg-wrapper');
+        if (immersiveBgWrapper) {
+            immersiveBgWrapper.classList.toggle('aurora-enabled', glowEnabled);
+        }
+
         // instantly scroll to active lyric if any
         Lyrics.sync();
 
@@ -988,6 +995,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.querySelectorAll('.app-logo-icon').forEach(icon => {
                     icon.style.display = show ? '' : 'none';
                 });
+            });
+        }
+
+        const immersiveBgToggle = document.getElementById('setting-immersive-bg-toggle');
+        if (immersiveBgToggle) {
+            immersiveBgToggle.addEventListener('change', (e) => {
+                const enabled = e.target.checked;
+                localStorage.setItem('immersiveBgGlowEnabled', enabled ? 'true' : 'false');
+                const immersiveBgWrapper = document.querySelector('.immersive-bg-wrapper');
+                if (immersiveBgWrapper) {
+                    immersiveBgWrapper.classList.toggle('aurora-enabled', enabled);
+                }
             });
         }
 

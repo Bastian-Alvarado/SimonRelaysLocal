@@ -207,6 +207,16 @@ const Templates = (() => {
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
+                    <div class="settings-row" style="flex-direction: row; justify-content: space-between; align-items: center;">
+                        <div class="settings-row-info">
+                            <div class="settings-row-label">Ambient Aurora Glow</div>
+                            <div class="settings-row-sub">Enable "breathing" dynamic color blobs in the background during Immersive Mode.</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-immersive-bg-toggle" ${localStorage.getItem('immersiveBgGlowEnabled') !== 'false' ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
                     <div class="settings-row">
                         <div class="settings-row-info">
                             <div class="settings-row-label">UI Scaling</div>

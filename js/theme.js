@@ -140,44 +140,61 @@ const Theme = (function () {
             img.src = absoluteImageUrl;
 
             img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = 10;
-                canvas.height = 10;
-                ctx.drawImage(img, 0, 0, 10, 10);
+                try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 10;
+                    canvas.height = 10;
+                    ctx.drawImage(img, 0, 0, 10, 10);
 
-                // Sample center for dominant
-                const data = ctx.getImageData(5, 5, 1, 1).data;
-                const [r, g, b] = data;
+                    // Sample center for dominant
+                    const data = ctx.getImageData(5, 5, 1, 1).data;
+                    const [r, g, b] = data;
 
-                // Sample corners for palette
-                const dataTop = ctx.getImageData(1, 1, 1, 1).data;
-                const dataBottom = ctx.getImageData(8, 8, 1, 1).data;
+                    // Sample corners for palette
+                    const dataTop = ctx.getImageData(1, 1, 1, 1).data;
+                    const dataBottom = ctx.getImageData(8, 8, 1, 1).data;
 
-                // 1. Always update Player Bar Tint (as per Simon Default requirement)
-                if (playerBar) {
-                    const dimR = Math.floor(r * 0.7);
-                    const dimG = Math.floor(g * 0.7);
-                    const dimB = Math.floor(b * 0.7);
-                    playerBar.style.setProperty('--player-dynamic-rgb', `${dimR}, ${dimG}, ${dimB}`);
-                    playerBar.style.setProperty('--player-dynamic-bg', `rgba(${dimR}, ${dimG}, ${dimB}, 0.75)`);
-                    playerBar.style.setProperty('--player-dynamic-fill', `rgba(${r}, ${g}, ${b}, 0.85)`);
-                }
+                    // 1. Always update Player Bar Tint (as per Simon Default requirement)
+                    if (playerBar) {
+                        const dimR = Math.floor(r * 0.7);
+                        const dimG = Math.floor(g * 0.7);
+                        const dimB = Math.floor(b * 0.7);
+                        playerBar.style.setProperty('--player-dynamic-rgb', `${dimR}, ${dimG}, ${dimB}`);
+                        playerBar.style.setProperty('--player-dynamic-bg', `rgba(${dimR}, ${dimG}, ${dimB}, 0.75)`);
+                        playerBar.style.setProperty('--player-dynamic-fill', `rgba(${r}, ${g}, ${b}, 0.85)`);
+                    }
 
-                // 2. If RGB Profile, update global accents and blobs
-                if (currentProfile === 'rgb') {
+                    // Calculate dynamic colors for immersive background (always calculated to support auroras)
                     const accentColor = boostColor(r, g, b);
                     const blobColor = boostColor(r, g, b, -0.2); // Same color, 20% less saturation
 
-                    root.style.setProperty('--accent', accentColor);
-                    root.style.setProperty('--blob-1-color', blobColor);
-                    root.style.setProperty('--blob-2-color', blobColor);
-                    root.style.setProperty('--gradient-1', blobColor);
-                    root.style.setProperty('--gradient-2', accentColor);
-                } else if (currentProfile === 'custom') {
-                    // In custom mode, we keep the user's color but still update player bar
-                    // applyCustomColor was already called or is handled by the color picker
+                    root.style.setProperty('--immersive-gradient-1', blobColor);
+                    root.style.setProperty('--immersive-gradient-2', accentColor);
+
+                    // 2. If RGB Profile, update global accents and blobs
+                    if (currentProfile === 'rgb') {
+                        root.style.setProperty('--accent', accentColor);
+                        root.style.setProperty('--blob-1-color', blobColor);
+                        root.style.setProperty('--blob-2-color', blobColor);
+                        root.style.setProperty('--gradient-1', blobColor);
+                        root.style.setProperty('--gradient-2', accentColor);
+                    } else if (currentProfile === 'custom') {
+                        // In custom mode, we keep the user's color but still update player bar
+                        // applyCustomColor was already called or is handled by the color picker
+                    }
+                } catch (e) {
+                    console.error('[Theme] Failed to extract colors from canvas:', e);
+                    // Fallback to defaults
+                    root.style.setProperty('--immersive-gradient-1', config.defaultBlob1);
+                    root.style.setProperty('--immersive-gradient-2', config.defaultBlob2);
                 }
+            };
+
+            img.onerror = (e) => {
+                console.warn('[Theme] Cover image failed to load for color extraction, applying default HSL fallbacks.', e);
+                root.style.setProperty('--immersive-gradient-1', config.defaultBlob1);
+                root.style.setProperty('--immersive-gradient-2', config.defaultBlob2);
             };
         },
 
