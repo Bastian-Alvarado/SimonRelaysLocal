@@ -287,6 +287,20 @@ const Playback = (() => {
             if (currentHowl && isFinite(val)) {
                 _lastSeekTime = Date.now();
                 currentHowl.seek(val);
+
+                // Sync OS lockscreen/notification seeker bar
+                if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+                    const dur = Playback.duration;
+                    if (isFinite(dur) && dur > 0) {
+                        try {
+                            navigator.mediaSession.setPositionState({
+                                duration: dur,
+                                playbackRate: 1,
+                                position: val
+                            });
+                        } catch (e) { console.warn('[Audio] MediaSession seek sync failed', e); }
+                    }
+                }
             }
         },
 
