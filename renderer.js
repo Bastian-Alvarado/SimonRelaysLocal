@@ -1135,7 +1135,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 input.value = opt ? opt.label : 'Original';
                 input.dataset.value = val;
             };
-            const currentVal = localStorage.getItem(storageKey) || 'original';
+            const currentVal = localStorage.getItem(storageKey) || '128';
             updateInputVal(currentVal);
             dropdown.innerHTML = '';
             qualityOptions.forEach(opt => {
@@ -3114,8 +3114,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function getTrackUrlForQuality(track, type = 'stream') {
         const qualityPref = type === 'stream'
-            ? (localStorage.getItem('streamQuality') || 'original')
-            : (localStorage.getItem('downloadQuality') || 'original');
+            ? (localStorage.getItem('streamQuality') || '128')
+            : (localStorage.getItem('downloadQuality') || '128');
 
         if (track.qualities && track.qualities[qualityPref]) {
             // track.qualities urls are already absolute paths or /api paths relative to serverBaseUrl
@@ -3127,8 +3127,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function getPlaybackFormat(track, type = 'stream') {
         const qualityPref = type === 'stream'
-            ? (localStorage.getItem('streamQuality') || 'original')
-            : (localStorage.getItem('downloadQuality') || 'original');
+            ? (localStorage.getItem('streamQuality') || '128')
+            : (localStorage.getItem('downloadQuality') || '128');
 
         if (track.qualities && track.qualities[qualityPref]) {
             const rawFormat = track.qualities[qualityPref].format;

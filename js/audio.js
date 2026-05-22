@@ -176,7 +176,7 @@ const Playback = (() => {
 
     async function resolveTrackUrl(track) {
         const serverBaseUrl = window.API.getBaseUrl();
-        const qualityPref = localStorage.getItem('streamQuality') || 'original';
+        const qualityPref = localStorage.getItem('streamQuality') || '128';
         
         // Reconcile track with master list if qualities are missing (handles stale objects from Likes/History)
         let masterTrack = track;
