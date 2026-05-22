@@ -404,3 +404,7 @@ const Lyrics = (function () {
         }
     };
 })();
+
+// Expose to window for global access (especially from other scopes like visualizer.js)
+window.Lyrics = Lyrics;
+

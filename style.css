@@ -2767,6 +2767,148 @@ input:focus+.toggle-slider {
     box-shadow: 0 0 1px var(--accent);
 }
 
+/* ── Visualizer Selection Grid ───────────────────────────────────────────── */
+.visualizer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    width: 100%;
+    margin-top: 16px;
+}
+
+.visualizer-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: relative;
+    user-select: none;
+}
+
+.visualizer-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, 0.16);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.visualizer-card.active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.visualizer-preview-container {
+    width: 100%;
+    height: 100px;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    background: #0f0f13;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.6);
+}
+
+.visualizer-card-title {
+    font-weight: 800;
+    font-size: 14px;
+    color: white;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.visualizer-card-subtitle {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    max-width: 100%;
+}
+
+/* ── Previews Content ── */
+.preview-none .preview-text {
+    font-weight: 900;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: rgba(255, 255, 255, 0.3);
+    z-index: 2;
+}
+
+.mini-bar-visualizer {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 50px;
+    width: 80%;
+    justify-content: center;
+}
+
+.mini-bar-visualizer .bar {
+    width: 5px;
+    border-radius: 3px 3px 0 0;
+    transition: height 0.3s;
+    animation: mini-bar-pulse 1.5s ease-in-out infinite alternate;
+}
+
+.mini-bar-visualizer .bar:nth-child(1) { animation-delay: 0.1s; }
+.mini-bar-visualizer .bar:nth-child(2) { animation-delay: 0.4s; }
+.mini-bar-visualizer .bar:nth-child(3) { animation-delay: 0.2s; }
+.mini-bar-visualizer .bar:nth-child(4) { animation-delay: 0.6s; }
+.mini-bar-visualizer .bar:nth-child(5) { animation-delay: 0.3s; }
+.mini-bar-visualizer .bar:nth-child(6) { animation-delay: 0.5s; }
+.mini-bar-visualizer .bar:nth-child(7) { animation-delay: 0.2s; }
+.mini-bar-visualizer .bar:nth-child(8) { animation-delay: 0.4s; }
+
+.mini-ring-visualizer {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mini-hellfire-visualizer {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    overflow: hidden;
+}
+
+/* ── Previews Keyframes ── */
+@keyframes mini-bar-pulse {
+    0% { height: 10%; }
+    100% { height: 95%; }
+}
+
+@keyframes pulse-glow {
+    0% { transform: scale(0.9) translate(-5px, -5px); opacity: 0.4; }
+    100% { transform: scale(1.1) translate(5px, 5px); opacity: 0.7; }
+}
+
+@keyframes flame-wobble {
+    0% { transform: scaleX(0.9) rotate(-2deg); filter: blur(6px) brightness(1); }
+    100% { transform: scaleX(1.1) rotate(2deg); filter: blur(5px) brightness(1.2); }
+}
+
+@keyframes float-spark {
+    0% { transform: translateY(0) scale(1); opacity: 1; }
+    100% { transform: translateY(-50px) scale(0.2); opacity: 0; }
+}
+
 .settings-themes-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -4744,4 +4886,23 @@ body.animations-enabled .play-pop {
 .hidden,
 [hidden] {
     display: none !important;
+}
+
+/* ── Active Chromecast Glow Styles ────────────────────────────────────────── */
+#cast-btn.active-cast {
+    color: var(--accent) !important;
+    filter: drop-shadow(0 0 8px var(--accent));
+    animation: cast-glowing 2.5s infinite alternate ease-in-out;
+    border-radius: 50%;
+}
+
+@keyframes cast-glowing {
+    0% {
+        box-shadow: 0 0 4px rgba(244, 63, 94, 0.2);
+        background: rgba(244, 63, 94, 0.1);
+    }
+    100% {
+        box-shadow: 0 0 16px rgba(244, 63, 94, 0.6);
+        background: rgba(244, 63, 94, 0.3);
+    }
 }

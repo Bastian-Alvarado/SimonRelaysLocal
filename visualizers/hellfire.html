@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; position: relative; }
+canvas { display: block; width: 100%; height: 100%; }
+#vignette {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at center, rgba(0,0,0,0) 20%, rgba(0,0,0,0.75) 80%);
+    pointer-events: none;
+    z-index: 5;
+}
+</style>
+</head>
+<body>
+<div id="vignette"></div>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// --- State from parent ---
+let frequency = new Array(128).fill(0);
+let volume = 0;
+let bass = 0;
+let trackTitle = '';
+let trackArtist = '';
+let debugMsgCount = 0;
+
+// Lyrics state
+let lyrics = [];           // [{time, text}, ...]
+let activeLyricIndex = -1;
+let displayedLyricIndex = -1;  // for smooth transitions
+let lyricTransition = 0;       // 0..1 animation progress
+let prevLyricText = '';
+let currentLyricText = '';
+
+// Mobile Detection Flag
+let isMobile = window.innerWidth <= 768;
+
+// --- Rain ---
+const raindrops = [];
+
+function initRain() {
+    raindrops.length = 0;
+    const rainCount = isMobile ? 85 : 280;
+    for (let i = 0; i < rainCount; i++) {
+        raindrops.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            speed: 2 + Math.random() * 6,
+            length: isMobile ? 18 + Math.random() * 32 : 10 + Math.random() * 30, // Slightly longer on mobile to feel dense
+            opacity: 0.1 + Math.random() * 0.4,
+            width: isMobile ? 1.0 + Math.random() * 2.0 : 0.5 + Math.random() * 1.5 // Slightly thicker on mobile for better visibility
+        });
+    }
+}
+
+function drawRain() {
+    const intensityMult = 0.6 + bass * 1.5;
+    raindrops.forEach(drop => {
+        ctx.beginPath();
+        ctx.strokeStyle = `rgba(180, 0, 0, ${drop.opacity * intensityMult})`;
+        ctx.lineWidth = drop.width;
+        ctx.moveTo(drop.x, drop.y);
+        ctx.lineTo(drop.x - 0.5, drop.y + drop.length);
+        ctx.stroke();
+        drop.y += drop.speed * (1 + bass * 2);
+        drop.x -= 0.3;
+        if (drop.y > canvas.height + drop.length) {
+            drop.y = -drop.length;
+            drop.x = Math.random() * canvas.width;
+        }
+    });
+}
+
+// --- Hands ---
+const hands = [];
+
+function initHands() {
+    hands.length = 0;
+    const w = canvas.width;
+    const h = canvas.height;
+    
+    // On mobile, draw fewer hands (5 instead of 11) to clear portrait viewport and optimize performance
+    const configs = isMobile ? [
+        { xf: 0.15, yOff: 30, scale: 0.85, band: 2, lean: -20 },
+        { xf: 0.33, yOff: 10, scale: 1.15, band: 5, lean: -10 },
+        { xf: 0.50, yOff: -10, scale: 1.45, band: 1, lean: 0 },
+        { xf: 0.67, yOff: 10, scale: 1.15, band: 4, lean: 10 },
+        { xf: 0.85, yOff: 30, scale: 0.85, band: 7, lean: 20 },
+    ] : [
+        { xf: 0.08, yOff: 40, scale: 0.7, band: 2, lean: -15 },
+        { xf: 0.15, yOff: 20, scale: 0.9, band: 5, lean: -25 },
+        { xf: 0.25, yOff: 10, scale: 1.1, band: 8, lean: -10 },
+        { xf: 0.33, yOff: 0,  scale: 1.3, band: 12, lean: -5 },
+        { xf: 0.42, yOff: -15, scale: 1.5, band: 3, lean: 5 },
+        { xf: 0.50, yOff: -30, scale: 1.8, band: 1, lean: 0 },
+        { xf: 0.58, yOff: -15, scale: 1.5, band: 4, lean: -5 },
+        { xf: 0.67, yOff: 0,  scale: 1.3, band: 10, lean: 8 },
+        { xf: 0.75, yOff: 10, scale: 1.1, band: 7, lean: 12 },
+        { xf: 0.85, yOff: 20, scale: 0.9, band: 6, lean: 20 },
+        { xf: 0.92, yOff: 40, scale: 0.7, band: 9, lean: 15 },
+    ];
+
+    configs.forEach(cfg => {
+        hands.push({
+            baseX: w * cfg.xf,
+            baseY: h + cfg.yOff,
+            scale: cfg.scale,
+            band: cfg.band,
+            lean: cfg.lean * (Math.PI / 180),
+            phase: Math.random() * Math.PI * 2,
+            fingerSpread: 0.15 + Math.random() * 0.1,
+        });
+    });
+}
+
+function drawHand(hand, time) {
+    const bandValue = frequency[hand.band] || 0;
+    const intensity = bandValue / 255;
+    const bassBoost = bass;
+    const sway = Math.sin(time * 0.002 + hand.phase) * 8 * (1 + intensity * 0.5);
+    const x = hand.baseX + sway;
+    const y = hand.baseY;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(hand.lean * (0.7 + intensity * 0.3));
+
+    const wristW = 18 * hand.scale;
+    const palmW = 28 * hand.scale;
+    const palmH = 30 * hand.scale;
+
+    const r = Math.min(255, 160 + Math.floor(intensity * 95));
+    const g = Math.floor(intensity * 20);
+    const handColor = `rgb(${r}, ${g}, 0)`;
+
+    // Crucial Optimization: Skip heavy canvas shadow blurring for hands on mobile devices
+    if (!isMobile) {
+        ctx.shadowColor = `rgba(255, 0, 0, ${0.3 + intensity * 0.5})`;
+        ctx.shadowBlur = 10 + intensity * 25;
+    }
+    ctx.fillStyle = handColor;
+
+    // Arm/wrist
+    ctx.beginPath();
+    ctx.moveTo(-wristW, 0);
+    ctx.lineTo(wristW, 0);
+    ctx.lineTo(palmW, -palmH);
+    ctx.lineTo(-palmW, -palmH);
+    ctx.closePath();
+    ctx.fill();
+
+    // Palm
+    const palmTop = -palmH;
+    ctx.beginPath();
+    ctx.ellipse(0, palmTop, palmW, palmH * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fingers
+    const fingerCount = 5;
+    const fingerBaseY = palmTop - palmH * 0.3;
+    for (let i = 0; i < fingerCount; i++) {
+        const t = (i / (fingerCount - 1)) - 0.5;
+        const fingerX = t * palmW * 1.6;
+        const fBand = Math.min(127, hand.band + i * 3);
+        const fIntensity = (frequency[fBand] || 0) / 255;
+        const fingerLen = (35 + fIntensity * 50 + intensity * 30) * hand.scale;
+        const fingerW = (3 + hand.scale * 2) * (i === 2 ? 1.2 : (i === 0 || i === 4) ? 0.8 : 1);
+        const spreadAngle = t * hand.fingerSpread * (1 + fIntensity * 0.8);
+        const curl = Math.sin(time * 0.003 + i + hand.phase) * 0.1 * (1 - fIntensity);
+
+        ctx.save();
+        ctx.translate(fingerX, fingerBaseY);
+        ctx.rotate(spreadAngle + curl);
+        
+        if (isMobile) {
+            // Mobile Optimization: Draw fingers using single stroked lines (massively faster than roundRect paths)
+            ctx.beginPath();
+            ctx.strokeStyle = handColor;
+            ctx.lineWidth = fingerW * 2;
+            ctx.lineCap = 'round';
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, -fingerLen);
+            ctx.stroke();
+        } else {
+            // Desktop standard rounded rect fingers
+            ctx.beginPath();
+            ctx.roundRect(-fingerW, 0, fingerW * 2, -fingerLen, [fingerW, fingerW, 0, 0]);
+            ctx.fill();
+        }
+
+        // Claw
+        const clawLen = 8 * hand.scale * (0.5 + fIntensity * 0.8);
+        ctx.beginPath();
+        ctx.moveTo(-fingerW * 0.6, -fingerLen);
+        ctx.lineTo(0, -fingerLen - clawLen);
+        ctx.lineTo(fingerW * 0.6, -fingerLen);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+    ctx.restore();
+}
+
+// --- Blood pool ---
+function drawBloodPool() {
+    const w = canvas.width;
+    const h = canvas.height;
+    const poolH = 40 + bass * 30;
+    const grad = ctx.createLinearGradient(0, h - poolH, 0, h);
+    grad.addColorStop(0, 'rgba(140, 0, 0, 0.8)');
+    grad.addColorStop(0.4, 'rgba(180, 0, 0, 0.95)');
+    grad.addColorStop(1, 'rgba(200, 10, 0, 1)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    const segments = isMobile ? 15 : 30; // Fewer segments on mobile to speed up path updates
+    for (let i = 0; i <= segments; i++) {
+        const sx = (i / segments) * w;
+        const wave = Math.sin(performance.now() * 0.002 + i * 0.5) * 5 * (1 + bass);
+        const sy = h - poolH + wave;
+        if (i === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+    }
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    ctx.fill();
+}
+
+// --- Embers ---
+const embers = [];
+
+function initEmbers() {
+    embers.length = 0;
+    const emberCount = isMobile ? 20 : 40;
+    for (let i = 0; i < emberCount; i++) {
+        embers.push({
+            x: Math.random() * canvas.width,
+            y: canvas.height * (0.4 + Math.random() * 0.6),
+            vx: -0.3 + Math.random() * 0.6,
+            vy: -0.5 - Math.random() * 1.5,
+            size: 1 + Math.random() * 3,
+            life: Math.random(),
+            decay: 0.002 + Math.random() * 0.005
+        });
+    }
+}
+
+function drawEmbers() {
+    embers.forEach(e => {
+        const alpha = e.life * (0.5 + bass * 0.5);
+        ctx.fillStyle = `rgba(255, ${50 + Math.floor(e.life * 80)}, 0, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.size * e.life, 0, Math.PI * 2);
+        ctx.fill();
+        e.x += e.vx;
+        e.y += e.vy * (1 + volume);
+        e.life -= e.decay;
+        if (e.life <= 0) {
+            e.x = Math.random() * canvas.width;
+            e.y = canvas.height * (0.5 + Math.random() * 0.5);
+            e.life = 0.8 + Math.random() * 0.2;
+        }
+    });
+}
+
+// --- Track info text ---
+function drawTrackInfo() {
+    if (!trackTitle && !trackArtist) return;
+    const cx = canvas.width / 2;
+    const topY = Math.floor(canvas.height * 0.12);
+
+    // Dynamic Blazing Fire Glow (Reduced on mobile to avoid CPU lag)
+    if (isMobile) {
+        ctx.shadowColor = 'rgba(255, 60, 0, 0.8)';
+        ctx.shadowBlur = 6;
+    } else {
+        ctx.shadowColor = 'rgba(255, 60, 0, 0.95)';
+        ctx.shadowBlur = 10 + bass * 15;
+    }
+
+    // White-hot center for the title
+    const titleSize = Math.floor(25 + bass * 6);
+    ctx.fillStyle = 'rgb(255, 248, 240)';
+    ctx.font = `bold ${titleSize}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const glitchX = bass > 0.6 ? (Math.random() - 0.5) * 4 : 0;
+    const glitchY = bass > 0.6 ? (Math.random() - 0.5) * 2 : 0;
+
+    if (trackTitle) {
+        ctx.fillText(trackTitle.toUpperCase(), cx + glitchX, topY + glitchY);
+    }
+
+    // Artist — slightly smaller, glowing warm amber
+    if (isMobile) {
+        ctx.shadowBlur = 3;
+    } else {
+        ctx.shadowBlur = 6 + bass * 4;
+    }
+    const artistSize = Math.floor(15 + bass * 3);
+    ctx.font = `600 ${artistSize}px sans-serif`;
+    ctx.fillStyle = 'rgb(255, 200, 150)';
+    if (trackArtist) {
+        ctx.fillText(trackArtist.toUpperCase(), cx + glitchX * 0.5, topY + 32 + glitchY * 0.5);
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// --- LYRICS RENDERING ---
+// ═══════════════════════════════════════════════════════════════════════
+
+const LYRICS_VISIBLE_LINES = 9;      // How many lines visible at once (odd for center symmetry)
+const LYRICS_LINE_HEIGHT = 38;       // px between lines
+const LYRICS_FONT_ACTIVE = 22;       // Active line font size
+const LYRICS_FONT_PASSIVE = 16;      // Other lines font size
+
+let glitchFragments = [];
+
+function spawnLyricGlitch(cx, cy, text) {
+    if (isMobile) return; // Skip complex glitch fragments on mobile for maximum CPU efficiency
+    
+    const fragCount = 3 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < fragCount; i++) {
+        const start = Math.floor(Math.random() * text.length * 0.6);
+        const len = 2 + Math.floor(Math.random() * 6);
+        const frag = text.substring(start, start + len);
+        glitchFragments.push({
+            text: frag,
+            x: cx + (Math.random() - 0.5) * 400,
+            y: cy + (Math.random() - 0.5) * 60,
+            life: 1.0,
+            decay: 0.03 + Math.random() * 0.04,
+            size: 10 + Math.random() * 14,
+            dx: (Math.random() - 0.5) * 3,
+            color: Math.random() > 0.3 ? 'rgba(255,0,0,' : 'rgba(255,60,0,'
+        });
+    }
+}
+
+function drawGlitchFragments() {
+    if (isMobile || !glitchFragments.length) return;
+    
+    glitchFragments.forEach(f => {
+        ctx.save();
+        ctx.font = `bold ${f.size}px "Courier New", monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = f.color + (f.life * 0.7) + ')';
+        ctx.shadowColor = 'rgba(255,0,0,0.4)';
+        ctx.shadowBlur = 6;
+        ctx.fillText(f.text, f.x, f.y);
+        ctx.restore();
+
+        f.x += f.dx;
+        f.y -= 0.5;
+        f.life -= f.decay;
+    });
+    glitchFragments = glitchFragments.filter(f => f.life > 0);
+}
+
+function drawLyrics(time) {
+    if (!lyrics.length || activeLyricIndex < 0) return;
+
+    const cx = canvas.width / 2;
+    const cy = canvas.height * 0.48;  // Slightly above center
+    const half = Math.floor(LYRICS_VISIBLE_LINES / 2);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Detect lyric change → spawn glitch burst
+    if (activeLyricIndex !== displayedLyricIndex) {
+        const newText = lyrics[activeLyricIndex] ? lyrics[activeLyricIndex].text : '';
+        if (newText && displayedLyricIndex >= 0) {
+            spawnLyricGlitch(cx, cy, newText);
+        }
+        prevLyricText = currentLyricText;
+        currentLyricText = newText;
+        displayedLyricIndex = activeLyricIndex;
+        lyricTransition = 0;
+    }
+
+    // Advance transition
+    if (lyricTransition < 1) {
+        lyricTransition = Math.min(1, lyricTransition + 0.06);
+    }
+
+    // Draw surrounding lines (context)
+    for (let offset = -half; offset <= half; offset++) {
+        const idx = activeLyricIndex + offset;
+        if (idx < 0 || idx >= lyrics.length) continue;
+
+        const line = lyrics[idx];
+        if (!line.text) continue;
+
+        const isActive = offset === 0;
+        const dist = Math.abs(offset);
+        const yPos = cy + offset * LYRICS_LINE_HEIGHT;
+
+        // Fade based on distance from center
+        const distFade = 1 - (dist / (half + 1));
+        const alpha = isActive ? (0.85 + volume * 0.15) : distFade * 0.45;
+
+        if (alpha <= 0.02) continue;
+
+        if (isActive) {
+            // ── ACTIVE LINE ──
+            const fontSize = LYRICS_FONT_ACTIVE + bass * 6;
+            ctx.font = `bold ${fontSize}px sans-serif`;
+
+            // Scanline glitch offset on bass
+            const gx = bass > 0.5 ? (Math.random() - 0.5) * 6 : 0;
+            const gy = bass > 0.5 ? (Math.random() - 0.5) * 3 : 0;
+
+            // Red channel offset (chromatic aberration on beats - disabled on mobile)
+            if (!isMobile && bass > 0.55) {
+                ctx.fillStyle = `rgba(255, 30, 0, ${alpha * 0.45})`;
+                ctx.fillText(line.text.toUpperCase(), cx + gx + 2, yPos + gy - 1);
+                ctx.fillStyle = `rgba(255, 120, 0, ${alpha * 0.3})`;
+                ctx.fillText(line.text.toUpperCase(), cx + gx - 2, yPos + gy + 1);
+            }
+
+            // Blazing white-hot glowing main text
+            if (isMobile) {
+                ctx.shadowColor = `rgba(255, 50, 0, 0.8)`;
+                ctx.shadowBlur = 6;
+            } else {
+                ctx.shadowColor = `rgba(255, 50, 0, ${0.7 + bass * 0.3})`;
+                ctx.shadowBlur = 10 + bass * 15;
+            }
+            ctx.fillStyle = `rgba(255, 252, 245, ${alpha})`;
+            ctx.fillText(line.text.toUpperCase(), cx + gx, yPos + gy);
+
+            // Underline pulse
+            const textWidth = ctx.measureText(line.text.toUpperCase()).width;
+            const underlineAlpha = 0.3 + bass * 0.4;
+            ctx.strokeStyle = `rgba(255, 80, 0, ${underlineAlpha})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx - textWidth / 2, yPos + fontSize * 0.6);
+            ctx.lineTo(cx + textWidth / 2, yPos + fontSize * 0.6);
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+
+        } else {
+            // ── CONTEXT LINES ──
+            const isPast = offset < 0;
+            ctx.font = `${isPast ? '600' : '400'} ${LYRICS_FONT_PASSIVE}px sans-serif`;
+
+            // Mobile Optimization: Bypass shadow blur entirely for passive context lines
+            if (!isMobile) {
+                const shadowA = alpha * 0.4;
+                if (isPast) {
+                    ctx.shadowColor = `rgba(255, 80, 0, ${shadowA})`;
+                    ctx.shadowBlur = 6;
+                } else {
+                    ctx.shadowColor = `rgba(180, 0, 0, ${shadowA})`;
+                    ctx.shadowBlur = 4;
+                }
+            }
+            
+            ctx.fillStyle = isPast ? `rgba(255, 90, 40, ${alpha})` : `rgba(180, 30, 20, ${alpha})`;
+            ctx.fillText(line.text.toUpperCase(), cx, yPos);
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+        }
+    }
+
+    // Draw glitch fragments on top (disabled on mobile)
+    drawGlitchFragments();
+}
+
+// --- Resize ---
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    isMobile = window.innerWidth <= 768;
+    initRain();
+    initHands();
+    initEmbers();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- Main loop ---
+let _renderErrors = 0;
+function render() {
+    try {
+        const time = performance.now();
+
+        const bgR = Math.floor(bass * 25);
+        ctx.fillStyle = `rgb(${bgR}, 0, 0)`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Vignette is drawn via hardware-accelerated CSS now!
+        drawRain();
+        drawEmbers();
+
+        // Lyrics drawn BEHIND the hands but in front of rain
+        drawLyrics(time);
+
+        drawBloodPool();
+        hands.forEach(h => drawHand(h, time));
+
+        // Draw track info as the VERY TOP layer so it is crystal clear
+        drawTrackInfo();
+
+    } catch (err) {
+        _renderErrors++;
+        if (_renderErrors <= 5) {
+            console.error('[Hellfire Render ERROR]', err.message, err.stack);
+        }
+    }
+
+    requestAnimationFrame(render);
+}
+
+render();
+
+// --- PostMessage listener ---
+window.addEventListener('message', (e) => {
+    if (!e.data || e.data.type !== 'audio-data') return;
+
+    debugMsgCount++;
+
+    frequency = e.data.frequency || frequency;
+    volume = e.data.volume || 0;
+    bass = e.data.bass || 0;
+
+    if (e.data.track) {
+        const md = e.data.track.metadata || e.data.track;
+        trackTitle = md.title || '';
+        trackArtist = md.artist || '';
+        if (debugMsgCount <= 10) {
+            console.log('[HELLFIRE IFRAME DETECTED]', trackTitle, 'by', trackArtist, 'msgs:', debugMsgCount);
+        }
+    }
+
+    // Lyrics data
+    if (e.data.lyrics) {
+        lyrics = e.data.lyrics;
+    }
+    if (typeof e.data.activeLyricIndex === 'number') {
+        activeLyricIndex = e.data.activeLyricIndex;
+    }
+});
+</script>
+</body>
+</html>

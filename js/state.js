@@ -18,6 +18,7 @@ const State = (() => {
         sessionHistory: [],            // recently played URLs
         sessionAffinity: { artists: {}, genres: {} },
         currentActiveCoverUrl: null,
+        isCasting: false,
         uploadState: {
             isUploading: false,
             successCount: 0,

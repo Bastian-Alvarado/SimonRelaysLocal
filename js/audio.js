@@ -39,6 +39,16 @@ const Playback = (() => {
 
     // Emulate timeupdate event for UI
     setInterval(() => {
+        if (State.get('isCasting')) {
+            if (window.CastManager && window.CastManager.isPlaying) {
+                const seek = Playback.currentTime;
+                const duration = Playback.duration;
+                if (callbacks.onProgress) {
+                    callbacks.onProgress(seek, duration);
+                }
+            }
+            return;
+        }
         if (currentHowl && currentHowl.playing()) {
             const seek = Playback.currentTime;
             const duration = Playback.duration;
@@ -204,21 +214,37 @@ const Playback = (() => {
         },
 
         // --- State Getters ---
-        get isPlaying() { return isPlayingState; },
+        get isPlaying() {
+            if (State.get('isCasting')) {
+                return window.CastManager && window.CastManager.isPlaying;
+            }
+            return isPlayingState;
+        },
         get currentTrack() { return globalPlayingTrack; },
         get currentHowl() { return currentHowl; },
         get duration() {
+            if (State.get('isCasting')) {
+                return window.CastManager ? window.CastManager.duration : 0;
+            }
             let howlDur = currentHowl ? currentHowl.duration() : 0;
             if (howlDur && isFinite(howlDur) && howlDur > 0) return howlDur;
             return (globalPlayingTrack && globalPlayingTrack.metadata && globalPlayingTrack.metadata.duration) 
                 ? globalPlayingTrack.metadata.duration : 0;
         },
         get currentTime() {
+            if (State.get('isCasting')) {
+                return window.CastManager ? window.CastManager.currentTime : 0;
+            }
             if (!currentHowl) return 0;
             const pos = currentHowl.seek();
             return (typeof pos === 'number' && isFinite(pos)) ? pos : 0;
         },
-        get volume() { return Howler.volume(); },
+        get volume() {
+            if (State.get('isCasting')) {
+                return window.CastManager ? window.CastManager.volume : 0.7;
+            }
+            return Howler.volume();
+        },
         get isShuffleActive() { return isShuffleActive; },
         get repeatMode() { return repeatMode; },
         get crossfadeDuration() { return CROSSFADE_DURATION; },
@@ -246,10 +272,18 @@ const Playback = (() => {
 
         // --- Actions ---
         setVolume(val) { 
+            if (State.get('isCasting')) {
+                window.CastManager?.setVolume(val);
+                return;
+            }
             Howler.volume(val); 
             localStorage.setItem('volume', val);
         },
         seek(val) {
+            if (State.get('isCasting')) {
+                window.CastManager?.seek(val);
+                return;
+            }
             if (currentHowl && isFinite(val)) {
                 _lastSeekTime = Date.now();
                 currentHowl.seek(val);
@@ -266,6 +300,26 @@ const Playback = (() => {
                 currentTrackIndex = index;
             } else {
                 currentTrackIndex = -1; // Playing outside context (manual queue)
+            }
+
+            // Chromecast Interception
+            if (State.get('isCasting')) {
+                globalPlayingTrack = track;
+                isPlayingState = true;
+                callbacks.onTrackChange?.(track);
+                callbacks.onPlayStateChange?.(true);
+
+                // Pause local playback
+                if (currentHowl) {
+                    currentHowl.pause();
+                }
+
+                // Play on Chromecast!
+                await window.CastManager?.playTrack(track);
+
+                // Pre-resolve next track background
+                setTimeout(() => this._preResolveNext(), 2000);
+                return true;
             }
 
             // --- Synchronous Handover Logic ---
@@ -302,7 +356,7 @@ const Playback = (() => {
                 } else {
                     currentHowl = new Howl({
                         src: [url],
-                        html5: false,
+                        html5: true,
                         format: ['mp3', 'flac', 'm4a', 'wav'],
                         autoplay: false,
                         volume: 0
@@ -403,7 +457,7 @@ const Playback = (() => {
                     
                     nextHowl = new Howl({
                         src: [url],
-                        html5: false,
+                        html5: true,
                         format: ['mp3', 'flac', 'm4a', 'wav'],
                         autoplay: false,
                         preload: true
@@ -418,6 +472,12 @@ const Playback = (() => {
         },
 
         pause() { 
+            if (State.get('isCasting')) {
+                window.CastManager?.pause();
+                isPlayingState = false;
+                callbacks.onPlayStateChange?.(false);
+                return;
+            }
             if (currentHowl) {
                 currentHowl.pause();
                 // Force state update in case Howler event is delayed or suppressed
@@ -429,6 +489,12 @@ const Playback = (() => {
             }
         },
         resume() { 
+            if (State.get('isCasting')) {
+                window.CastManager?.resume();
+                isPlayingState = true;
+                callbacks.onPlayStateChange?.(true);
+                return;
+            }
             if (currentHowl) {
                 currentHowl.play();
                 isPlayingState = true;

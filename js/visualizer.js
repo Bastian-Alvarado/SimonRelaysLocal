@@ -42,9 +42,10 @@ const Visualizer = (() => {
         }
 
         try {
-            audioElement.crossOrigin = "anonymous";
             const sourceNode = audioCtx.createMediaElementSource(audioElement);
+            // Connect to BOTH the analyser (for FFT data) AND destination (so audio is still heard)
             sourceNode.connect(analyser);
+            sourceNode.connect(audioCtx.destination);
             mediaElementSources.set(audioElement, sourceNode);
             console.log('[Visualizer] Connected HTML5 audio element source.');
         } catch (e) {
@@ -70,6 +71,16 @@ const Visualizer = (() => {
                 Howler.masterGain.connect(analyser);
                 analyser.connect(audioCtx.destination);
 
+                // If the AudioContext is ever closed (e.g. browser optimisation), clear so we reconnect cleanly
+                audioCtx.addEventListener('statechange', () => {
+                    if (audioCtx.state === 'closed') {
+                        analyser = null;
+                        audioCtx = null;
+                        dataArray = null;
+                        timeDataArray = null;
+                    }
+                });
+
                 console.log('[Visualizer] Connected to global Howler master output.');
                 return true;
             } catch (e) {
@@ -92,10 +103,9 @@ const Visualizer = (() => {
             return;
         }
 
-        // Initialize display nodes
         if (mode === 'bars' || mode === 'ring') {
             setupCanvas();
-        } else if (mode === 'custom') {
+        } else if (mode === 'custom' || mode === 'hellfire' || mode === 'simple_example') {
             setupIframe();
         }
 
@@ -145,20 +155,66 @@ const Visualizer = (() => {
         if (ctx) ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
     }
 
-    function setupIframe() {
+    async function setupIframe() {
         if (!container) return;
-        const customHtml = localStorage.getItem('customVisualizerHtml');
-        if (!customHtml) {
-            container.innerHTML = `
-                <div style="color: rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: center; height:100%; font-size:14px; font-weight:600;">
-                    No custom visualizer file uploaded. Please upload a self-contained .html file in Settings.
-                </div>
-            `;
-            return;
+        
+        let customHtml = '';
+        if (currentMode === 'custom') {
+            customHtml = localStorage.getItem('customVisualizerHtml');
+            if (!customHtml) {
+                container.innerHTML = `
+                    <div style="color: rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: center; height:100%; font-size:14px; font-weight:600;">
+                        No custom visualizer file uploaded. Please upload a self-contained .html file in Settings.
+                    </div>
+                `;
+                return;
+            }
+            createAndInjectIframe(customHtml);
+        } else if (currentMode === 'hellfire' || currentMode === 'simple_example') {
+            try {
+                const response = await fetch(`/visualizers/${currentMode}.html`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch /visualizers/${currentMode}.html (status ${response.status})`);
+                }
+                customHtml = await response.text();
+                createAndInjectIframe(customHtml);
+            } catch (err) {
+                console.error('[Visualizer] Error loading built-in HTML visualizer:', err);
+                container.innerHTML = `
+                    <div style="color: rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: center; height:100%; font-size:14px; font-weight:600; text-align: center; padding: 20px;">
+                        Failed to load built-in theme ${currentMode}. Ensure server is running.
+                    </div>
+                `;
+            }
         }
+    }
 
+    function createAndInjectIframe(customHtml) {
         try {
-            const blob = new Blob([customHtml], { type: 'text/html' });
+            if (activeBlobUrl) {
+                URL.revokeObjectURL(activeBlobUrl);
+                activeBlobUrl = null;
+            }
+
+            // Inject a debug script at the end of the HTML to trace message reception
+            const debugScript = `<script>
+                let __dbgCount = 0;
+                window.addEventListener('message', (e) => {
+                    if (e.data && e.data.type === 'audio-data') {
+                        __dbgCount++;
+                        if (__dbgCount <= 3) {
+                            console.log('[IFRAME DEBUG] msg #' + __dbgCount + ' track:', JSON.stringify(e.data.track && e.data.track.metadata));
+                            console.log('[IFRAME DEBUG] lyrics count:', (e.data.lyrics || []).length, 'activeIdx:', e.data.activeLyricIndex);
+                        }
+                    }
+                });
+            <\/script>`;
+
+            const injectedHtml = customHtml.includes('</body>')
+                ? customHtml.replace('</body>', debugScript + '</body>')
+                : customHtml + debugScript;
+
+            const blob = new Blob([injectedHtml], { type: 'text/html' });
             activeBlobUrl = URL.createObjectURL(blob);
 
             iframe = document.createElement('iframe');
@@ -168,16 +224,18 @@ const Visualizer = (() => {
 
             iframe.onload = () => {
                 iframeLoaded = true;
+                console.log('[Visualizer] Custom/Built-in iframe loaded successfully.');
             };
 
             container.appendChild(iframe);
         } catch (e) {
-            console.error('[Visualizer] Failed to initialize custom iframe:', e);
+            console.error('[Visualizer] Failed to initialize custom/built-in iframe:', e);
         }
     }
 
     function handleCustomUpload(fileText) {
         localStorage.setItem('customVisualizerHtml', fileText);
+        console.log('[Visualizer] Stored custom HTML, length:', fileText.length, 'first 80 chars:', fileText.substring(0, 80));
         if (currentMode === 'custom') {
             setMode('custom'); // Reload visualizer
         }
@@ -185,14 +243,17 @@ const Visualizer = (() => {
 
     function start() {
         if (currentMode === 'none') return;
-        if (!ensureAnalyser()) {
-            // Howler context not ready yet. Retry when audio starts playing.
-            return;
-        }
 
-        // Cancel previous animation loops to avoid duplicate ticking
+        // Cancel any existing loop first
         if (animationFrameId) {
             cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+        }
+
+        if (!ensureAnalyser()) {
+            // Howler AudioContext not ready yet — retry on next frame until it is
+            animationFrameId = requestAnimationFrame(start);
+            return;
         }
 
         // Resume AudioContext if suspended (browser security)
@@ -238,7 +299,7 @@ const Visualizer = (() => {
                     drawPulseRing(width, height);
                 }
             }
-        } else if (currentMode === 'custom' && iframe && iframeLoaded) {
+        } else if ((currentMode === 'custom' || currentMode === 'hellfire' || currentMode === 'simple_example') && iframe && iframeLoaded) {
             broadcastToIframe();
         }
 
@@ -308,63 +369,81 @@ const Visualizer = (() => {
         const bassAvg = bassSum / 8;
         const bassIntensity = bassAvg / 255; // 0.0 to 1.0
 
-        // Base circular properties
-        const baseRadius = Math.min(width, height) * 0.16 + (bassIntensity * 32);
+        // Create an organic, slow idle breath wave (breathing cycle of 2.4 seconds)
+        const idlePulse = Math.sin(Date.now() / 1200) * 0.5 + 0.5;
         
-        // Draw Soft Glow Backdrop
+        // Blend bass hits with a premium idle breathing floor when silent or paused
+        const effectiveIntensity = Math.max(bassIntensity, idlePulse * 0.06);
+
+        // Responsive, audio-reactive radii matching the proportions of the preview card
+        const maxDimension = Math.min(width, height);
+        const innerRadius = maxDimension * 0.04 + (effectiveIntensity * 12);
+        const middleRadius = maxDimension * 0.08 + (effectiveIntensity * 24);
+        const outerRadius = maxDimension * 0.12 + (effectiveIntensity * 36);
+        
+        // 1. Draw Soft Glow Backdrop (Breathes with bass intensity)
         ctx.beginPath();
-        const radialGrad = ctx.createRadialGradient(centerX, centerY, baseRadius * 0.6, centerX, centerY, baseRadius * 2);
-        radialGrad.addColorStop(0, `rgba(${hexToRgb(accent)}, 0.1)`);
-        radialGrad.addColorStop(0.5, `rgba(${hexToRgb(color2)}, 0.05)`);
+        const radialGrad = ctx.createRadialGradient(centerX, centerY, innerRadius, centerX, centerY, outerRadius * 1.6);
+        radialGrad.addColorStop(0, `rgba(${hexToRgb(accent)}, 0.15)`);
+        radialGrad.addColorStop(0.4, `rgba(${hexToRgb(color2)}, 0.06)`);
         radialGrad.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = radialGrad;
-        ctx.arc(centerX, centerY, baseRadius * 2, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY, outerRadius * 1.6, 0, Math.PI * 2);
         ctx.fill();
 
-        // Waveform Circular Ring (draw points around circle matching time data)
+        // 2. Draw Solid White Center Circle (Pulsing size and glow)
+        ctx.save();
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
+        ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.lineWidth = 4.5;
-        ctx.strokeStyle = accent;
-        ctx.shadowBlur = 20;
+        ctx.arc(centerX, centerY, innerRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // 3. Draw Middle Solid Accent Ring (Glows intensely, expanding with audio)
+        ctx.save();
+        ctx.shadowBlur = 24;
         ctx.shadowColor = accent;
-
-        const points = 120;
-        for (let i = 0; i < points; i++) {
-            const angle = (i / points) * Math.PI * 2;
-            
-            // Map frequencies around the circle symmetrically
-            const dataIndex = Math.floor((i < points / 2 ? i : points - i) * (dataArray.length / (points / 2)));
-            const waveOffset = (dataArray[dataIndex] / 255) * 45;
-
-            const r = baseRadius + waveOffset;
-            const x = centerX + Math.cos(angle) * r;
-            const y = centerY + Math.sin(angle) * r;
-
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        }
-        ctx.closePath();
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, middleRadius, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.shadowBlur = 0;
+        ctx.restore();
 
-        // Particle System: Emit pulsing particles from boundary of base ring
+        // 4. Draw Outer Dashed Ring (Rotates smoothly over time, expands with bass)
+        ctx.save();
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.2)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([8, 14]);
+        
+        // Translate to center to apply rotation transform
+        ctx.translate(centerX, centerY);
+        const rotationAngle = (Date.now() / 2500) % (Math.PI * 2);
+        ctx.rotate(rotationAngle);
+        ctx.beginPath();
+        ctx.arc(0, 0, outerRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        // 5. Particle System: Emit pulsing particles from boundary of middle ring shooting outward
         const now = Date.now();
-        if (bassIntensity > 0.45 && now - lastBeatTime > 90 && particles.length < 80) {
+        if (bassIntensity > 0.4 && now - lastBeatTime > 80 && particles.length < 80) {
             lastBeatTime = now;
-            const emitCount = Math.floor(bassIntensity * 4);
+            const emitCount = Math.min(6, Math.floor(bassIntensity * 6));
             for (let k = 0; k < emitCount; k++) {
                 const angle = Math.random() * Math.PI * 2;
                 particles.push({
-                    x: centerX + Math.cos(angle) * baseRadius,
-                    y: centerY + Math.sin(angle) * baseRadius,
-                    vx: Math.cos(angle) * (1.5 + Math.random() * 3) * (bassIntensity * 1.5),
-                    vy: Math.sin(angle) * (1.5 + Math.random() * 3) * (bassIntensity * 1.5),
-                    radius: 2 + Math.random() * 5,
-                    alpha: 0.85,
-                    color: Math.random() > 0.4 ? accent : color2
+                    x: centerX + Math.cos(angle) * middleRadius,
+                    y: centerY + Math.sin(angle) * middleRadius,
+                    vx: Math.cos(angle) * (1.2 + Math.random() * 2.8) * (bassIntensity * 1.4),
+                    vy: Math.sin(angle) * (1.2 + Math.random() * 2.8) * (bassIntensity * 1.4),
+                    radius: 1.5 + Math.random() * 3,
+                    alpha: 0.8,
+                    color: Math.random() > 0.4 ? accent : '#ffffff'
                 });
             }
         }
@@ -381,13 +460,14 @@ const Visualizer = (() => {
             }
 
             ctx.beginPath();
-            ctx.fillStyle = `rgba(${hexToRgb(p.color)}, ${p.alpha})`;
+            ctx.fillStyle = `rgba(${p.color === '#ffffff' ? '255,255,255' : hexToRgb(p.color)}, ${p.alpha})`;
             ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
             ctx.fill();
         });
     }
 
     // ── Broadcaster to sandboxed custom iframe ─────────────────────────────────
+    let _broadcastLoggedOnce = false;
     function broadcastToIframe() {
         if (!iframe || !iframeLoaded) return;
 
@@ -401,9 +481,42 @@ const Visualizer = (() => {
         const volume = total / dataArray.length;
         const avgBass = bass / 10;
 
-        const currentTrack = window.State && typeof window.State.get === 'function'
-            ? window.State.get('currentTrack')
-            : (window.globalPlayingTrack || {});
+        const rawTrack = (window.Playback && window.Playback.currentTrack) || {};
+
+        // Build a clean, serializable track object — raw track may have Blobs, DOM refs,
+        // or other non-cloneable properties that would cause postMessage to throw silently.
+        const md = rawTrack.metadata || {};
+        const track = {
+            filename: rawTrack.filename || '',
+            relativePath: rawTrack.relativePath || '',
+            url: rawTrack.url || '',
+            metadata: {
+                title: md.title || '',
+                artist: md.artist || '',
+                album: md.album || '',
+                genre: md.genre || '',
+                duration: md.duration || 0,
+                hasCover: !!md.hasCover
+            }
+        };
+
+        // Build cover art URL from track relativePath + server base URL
+        let coverArtUrl = null;
+        if (track.relativePath && window.API && typeof window.API.getBaseUrl === 'function') {
+            const serverBase = window.API.getBaseUrl();
+            coverArtUrl = `${serverBase}/api/cover?path=${encodeURIComponent(track.relativePath)}`;
+        }
+
+        // Pull lyrics data from the Lyrics module (safe no-op if unavailable or not loaded)
+        let lyrics = [];
+        let activeLyricIndex = -1;
+        if (window.Lyrics) {
+            const raw = window.Lyrics.lyricsData;
+            if (Array.isArray(raw)) {
+                lyrics = raw.map(line => ({ time: line.time, text: line.text }));
+            }
+            activeLyricIndex = window.Lyrics.currentLyricIndex;
+        }
 
         const msg = {
             type: 'audio-data',
@@ -411,7 +524,10 @@ const Visualizer = (() => {
             timeDomain: Array.from(timeDataArray),
             volume: volume / 255,
             bass: avgBass / 255,
-            track: currentTrack,
+            track,
+            coverArtUrl,
+            lyrics,
+            activeLyricIndex,
             colors: {
                 accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#e11d48',
                 gradient1: getComputedStyle(document.documentElement).getPropertyValue('--immersive-gradient-1').trim() || '#f43f5e',
@@ -419,7 +535,16 @@ const Visualizer = (() => {
             }
         };
 
-        iframe.contentWindow.postMessage(msg, '*');
+        if (!_broadcastLoggedOnce) {
+            _broadcastLoggedOnce = true;
+            console.log('[Visualizer] First broadcast to iframe. Track title:', track.metadata.title, '| Lyrics:', lyrics.length, '| ActiveIdx:', activeLyricIndex);
+        }
+
+        try {
+            iframe.contentWindow.postMessage(msg, '*');
+        } catch (e) {
+            console.warn('[Visualizer] postMessage failed:', e);
+        }
     }
 
     // ── Helper Utility: Hex -> RGB ───────────────────────────────────────────

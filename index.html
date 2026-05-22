@@ -554,12 +554,13 @@
                     </div>
 
                     <div class="settings-tabs">
-                        <button class="settings-tab active" data-tab="all">All</button>
-                        <button class="settings-tab" data-tab="appearance">Appearance</button>
+                        <button class="settings-tab active" data-tab="appearance">Appearance</button>
+                        <button class="settings-tab" data-tab="visualizer">Visualizers</button>
                         <button class="settings-tab" data-tab="audio">Audio</button>
                         <button class="settings-tab" data-tab="network">Network</button>
                         <button class="settings-tab" data-tab="cloud">Cloud</button>
                         <button class="settings-tab" data-tab="account">Account</button>
+                        <button class="settings-tab" data-tab="all">All</button>
                     </div>
                 </div>
                 <div class="settings-body">
@@ -714,12 +715,10 @@
                             <line x1="3" y1="18" x2="3.01" y2="18"></line>
                         </svg>
                     </button>
-                    <button class="icon-button" title="Connect">
+                    <button id="cast-btn" class="icon-button" title="Cast to TV / Speaker">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
-                            <circle cx="12" cy="14" r="4"></circle>
-                            <line x1="12" y1="6" x2="12.01" y2="6"></line>
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 16.1A5 5 0 0 1 5.9 20M2 12A9 9 0 0 1 10 20M2 20h.01M22 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v3m20 9a2 2 0 0 1-2 2h-7"/>
                         </svg>
                     </button>
                     <div class="volume-container">
@@ -953,6 +952,8 @@
             </nav>
         </div>
 
+        <script src="js/cast.js"></script>
+        <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
         <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
         <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
         <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-database-compat.js"></script>

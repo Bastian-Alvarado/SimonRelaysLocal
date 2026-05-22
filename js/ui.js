@@ -207,41 +207,6 @@ const Templates = (() => {
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
-                    <div class="settings-row" style="flex-direction: row; justify-content: space-between; align-items: center;">
-                        <div class="settings-row-info">
-                            <div class="settings-row-label">Ambient Aurora Glow</div>
-                            <div class="settings-row-sub">Enable "breathing" dynamic color blobs in the background during Immersive Mode.</div>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="setting-immersive-bg-toggle" ${localStorage.getItem('immersiveBgGlowEnabled') !== 'false' ? 'checked' : ''}>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    <div class="settings-row" style="flex-direction: row; justify-content: space-between; align-items: center;">
-                        <div class="settings-row-info">
-                            <div class="settings-row-label">Visualizer Effect</div>
-                            <div class="settings-row-sub">Choose a real-time reactive audio visualizer for Immersive Mode.</div>
-                        </div>
-                        <select id="setting-visualizer-mode" class="settings-text-input" style="width: 200px; background-color: #1a1a20; color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 6px 12px; font-weight: 600;">
-                            <option value="none" ${localStorage.getItem('activeVisualizer') === 'none' || !localStorage.getItem('activeVisualizer') ? 'selected' : ''}>None (Auroras Only)</option>
-                            <option value="bars" ${localStorage.getItem('activeVisualizer') === 'bars' ? 'selected' : ''}>Retro Bars (Canvas)</option>
-                            <option value="ring" ${localStorage.getItem('activeVisualizer') === 'ring' ? 'selected' : ''}>Pulse Ring (Canvas)</option>
-                            <option value="custom" ${localStorage.getItem('activeVisualizer') === 'custom' ? 'selected' : ''}>Custom HTML (User Upload)</option>
-                        </select>
-                    </div>
-                    <div id="visualizer-upload-row" class="settings-row ${localStorage.getItem('activeVisualizer') === 'custom' ? '' : 'hidden'}" style="flex-direction: row; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 12px;">
-                        <div class="settings-row-info">
-                            <div class="settings-row-label">Upload Custom Visualizer</div>
-                            <div class="settings-row-sub">Select a self-contained .html visualizer file.</div>
-                        </div>
-                        <div class="settings-input-group" style="gap: 12px; align-items: center;">
-                            <input type="file" id="setting-visualizer-file" accept=".html" style="display: none;">
-                            <button id="setting-visualizer-upload-btn" class="settings-save-btn" style="padding: 6px 14px;">Select File</button>
-                            <span id="setting-visualizer-file-name" style="font-size: 12px; color: var(--text-secondary); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; line-height: 24px;">
-                                ${localStorage.getItem('customVisualizerHtml') ? 'custom_visualizer.html' : 'No file selected'}
-                            </span>
-                        </div>
-                    </div>
                     <div class="settings-row">
                         <div class="settings-row-info">
                             <div class="settings-row-label">UI Scaling</div>
@@ -262,6 +227,114 @@ const Templates = (() => {
                             <input type="checkbox" id="setting-animations-toggle" ${Animations.isEnabled() ? 'checked' : ''}>
                             <span class="toggle-slider"></span>
                         </label>
+                    </div>
+                </div>
+
+                <div class="settings-section" data-category="visualizer">
+                    <div class="settings-section-title">Visualizers</div>
+                    <div class="settings-row" style="flex-direction: row; justify-content: space-between; align-items: center;">
+                        <div class="settings-row-info">
+                            <div class="settings-row-label">Ambient Aurora Glow</div>
+                            <div class="settings-row-sub">Enable "breathing" dynamic color blobs in the background during Immersive Mode.</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-immersive-bg-toggle" ${localStorage.getItem('immersiveBgGlowEnabled') !== 'false' ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="settings-row" style="gap: 16px;">
+                        <div class="settings-row-info">
+                            <div class="settings-row-label">Visualizer Effect</div>
+                            <div class="settings-row-sub" style="margin-bottom: 8px;">Choose a real-time reactive audio visualizer to experience in Immersive Mode.</div>
+                        </div>
+                        
+                        <div class="visualizer-grid">
+                            <div class="visualizer-card ${(!localStorage.getItem('activeVisualizer') || localStorage.getItem('activeVisualizer') === 'none') ? 'active' : ''}" data-mode="none">
+                                <div class="visualizer-preview-container preview-none">
+                                    <div class="aurora-glow-blob" style="background: radial-gradient(circle, var(--accent) 0%, transparent 60%); width: 70px; height: 70px; filter: blur(15px); opacity: 0.5; position: absolute; top: 10px; left: 10px; animation: pulse-glow 3s infinite alternate;"></div>
+                                    <div class="aurora-glow-blob" style="background: radial-gradient(circle, #00d4ff 0%, transparent 60%); width: 60px; height: 60px; filter: blur(12px); opacity: 0.4; position: absolute; bottom: 10px; right: 10px; animation: pulse-glow 4s infinite alternate-reverse;"></div>
+                                    <span class="preview-text">AURORAS</span>
+                                </div>
+                                <div class="visualizer-card-title">None</div>
+                                <div class="visualizer-card-subtitle">Minimalist auroras only</div>
+                            </div>
+                            <div class="visualizer-card ${localStorage.getItem('activeVisualizer') === 'bars' ? 'active' : ''}" data-mode="bars">
+                                <div class="visualizer-preview-container preview-bars">
+                                    <div class="mini-bar-visualizer">
+                                        <div class="bar" style="height: 30%; background: linear-gradient(to top, var(--accent), #fb7185);"></div>
+                                        <div class="bar" style="height: 70%; background: linear-gradient(to top, var(--accent), #fb7185);"></div>
+                                        <div class="bar" style="height: 50%; background: linear-gradient(to top, var(--accent), #fb7185);"></div>
+                                        <div class="bar" style="height: 90%; background: linear-gradient(to top, var(--accent), #fb7185);"></div>
+                                        <div class="bar" style="height: 40%; background: linear-gradient(to top, var(--accent), #fb7185);"></div>
+                                        <div class="bar" style="height: 60%; background: linear-gradient(to top, var(--accent), #fb7185);"></div>
+                                        <div class="bar" style="height: 80%; background: linear-gradient(to top, var(--accent), #fb7185);"></div>
+                                        <div class="bar" style="height: 45%; background: linear-gradient(to top, var(--accent), #fb7185);"></div>
+                                    </div>
+                                </div>
+                                <div class="visualizer-card-title">Retro Bars</div>
+                                <div class="visualizer-card-subtitle">Classic frequency spectrum analyzer</div>
+                            </div>
+                            <div class="visualizer-card ${localStorage.getItem('activeVisualizer') === 'ring' ? 'active' : ''}" data-mode="ring">
+                                <div class="visualizer-preview-container preview-ring">
+                                    <div class="mini-ring-visualizer">
+                                        <div class="ring-dot outer" style="border: 2px dashed rgba(255, 255, 255, 0.2); width: 70px; height: 70px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: absolute; animation: spin-slow 20s linear infinite;">
+                                            <div class="ring-dot middle" style="border: 2px solid var(--accent); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: absolute; box-shadow: 0 0 10px rgba(244,63,94,0.3);">
+                                                <div class="ring-dot inner" style="background: rgba(255,255,255,0.8); width: 22px; height: 22px; border-radius: 50%;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="visualizer-card-title">Pulse Ring</div>
+                                <div class="visualizer-card-subtitle">Geometric audio-reactive portal</div>
+                            </div>
+                            <div class="visualizer-card ${localStorage.getItem('activeVisualizer') === 'hellfire' ? 'active' : ''}" data-mode="hellfire">
+                                <div class="visualizer-preview-container preview-hellfire" style="background: radial-gradient(circle at bottom, #300 0%, #0f0f13 80%);">
+                                    <div class="mini-hellfire-visualizer">
+                                        <div class="flame" style="background: linear-gradient(to top, #f43f5e 0%, #f97316 50%, transparent 100%); width: 32px; height: 60px; filter: blur(6px); border-radius: 50% 50% 20% 20%; animation: flame-wobble 2s infinite alternate; bottom: 0; position: absolute;"></div>
+                                        <div class="spark" style="background: #fbbf24; width: 3px; height: 3px; border-radius: 50%; position: absolute; bottom: 15px; left: -8px; animation: float-spark 1.5s infinite; filter: blur(0.5px);"></div>
+                                        <div class="spark" style="background: #fbbf24; width: 2px; height: 2px; border-radius: 50%; position: absolute; bottom: 30px; right: -10px; animation: float-spark 1.8s infinite 0.5s; filter: blur(0.5px);"></div>
+                                        <div class="spark" style="background: #f43f5e; width: 3px; height: 3px; border-radius: 50%; position: absolute; bottom: 8px; left: 6px; animation: float-spark 1.2s infinite 0.2s; filter: blur(0.5px);"></div>
+                                    </div>
+                                </div>
+                                <div class="visualizer-card-title">Hellfire</div>
+                                <div class="visualizer-card-subtitle">High-performance particle flames</div>
+                            </div>
+                            <div class="visualizer-card ${localStorage.getItem('activeVisualizer') === 'simple_example' ? 'active' : ''}" data-mode="simple_example">
+                                <div class="visualizer-preview-container preview-simple">
+                                    <svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width: 80%; height: 26px;">
+                                        <path d="M0 20 Q 15 5, 30 20 T 60 20 T 90 20 H 100" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" style="opacity: 0.8; filter: drop-shadow(0 0 4px var(--accent));"></path>
+                                        <path d="M0 20 Q 15 35, 30 20 T 60 20 T 90 20 H 100" fill="none" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round" style="opacity: 0.5;"></path>
+                                    </svg>
+                                </div>
+                                <div class="visualizer-card-title">Simple Example</div>
+                                <div class="visualizer-card-subtitle">HTML5 fluid waveform lines</div>
+                            </div>
+                            <div class="visualizer-card ${localStorage.getItem('activeVisualizer') === 'custom' ? 'active' : ''}" data-mode="custom">
+                                <div class="visualizer-preview-container preview-custom">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity: 0.7;">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="17 8 12 3 7 8"></polyline>
+                                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                                    </svg>
+                                    <span class="preview-text" style="font-size: 8px; margin-top: 36px; position: absolute; letter-spacing: 0.5px; opacity: 0.6;">HTML / ZIP</span>
+                                </div>
+                                <div class="visualizer-card-title">Custom HTML</div>
+                                <div class="visualizer-card-subtitle">Upload your own .html creation</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="visualizer-upload-row" class="settings-row ${localStorage.getItem('activeVisualizer') === 'custom' ? '' : 'hidden'}" style="flex-direction: row; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 12px;">
+                        <div class="settings-row-info">
+                            <div class="settings-row-label">Upload Custom Visualizer</div>
+                            <div class="settings-row-sub">Select a self-contained .html visualizer file.</div>
+                        </div>
+                        <div class="settings-input-group" style="gap: 12px; align-items: center;">
+                            <input type="file" id="setting-visualizer-file" accept=".html" style="display: none;">
+                            <button id="setting-visualizer-upload-btn" class="settings-save-btn" style="padding: 6px 14px;">Select File</button>
+                            <span id="setting-visualizer-file-name" style="font-size: 12px; color: var(--text-secondary); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; line-height: 24px;">
+                                ${localStorage.getItem('customVisualizerHtml') ? 'custom_visualizer.html' : 'No file selected'}
+                            </span>
+                        </div>
                     </div>
                 </div>
 

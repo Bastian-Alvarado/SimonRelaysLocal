@@ -223,7 +223,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (stateData.playlist) openPlaylistView(stateData.playlist, false);
                     else Router.switchToView('playlist');
                     break;
-                case 'settings': openSettings(false, stateData.tab || 'all'); break;
+                case 'settings': openSettings(false, stateData.tab || 'appearance'); break;
                 case 'profile':
                     renderProfilePanel();
                     openProfile(false);
@@ -740,7 +740,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Settings Panel Logic
-    function openSettings(push = true, targetTab = 'all') {
+    function openSettings(push = true, targetTab = 'appearance') {
         if (push) Router.navigate('settings', { tab: targetTab });
         hideOverlays('settings'); // Close other overlays first
         renderSettingsPanel(targetTab);
@@ -1030,26 +1030,33 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        const visualizerModeSelect = document.getElementById('setting-visualizer-mode');
-        const visualizerUploadRow = document.getElementById('visualizer-upload-row');
-        const visualizerFileInput = document.getElementById('setting-visualizer-file');
-        const visualizerUploadBtn = document.getElementById('setting-visualizer-upload-btn');
-        const visualizerFileName = document.getElementById('setting-visualizer-file-name');
+        const visualizerCards = body.querySelectorAll('.visualizer-card');
+        const visualizerUploadRow = body.querySelector('#visualizer-upload-row');
+        const visualizerFileInput = body.querySelector('#setting-visualizer-file');
+        const visualizerUploadBtn = body.querySelector('#setting-visualizer-upload-btn');
+        const visualizerFileName = body.querySelector('#setting-visualizer-file-name');
 
-        if (visualizerModeSelect) {
-            visualizerModeSelect.addEventListener('change', (e) => {
-                const mode = e.target.value;
-                if (window.Visualizer) {
-                    Visualizer.setMode(mode);
-                }
-                
-                if (visualizerUploadRow) {
-                    if (mode === 'custom') {
-                        visualizerUploadRow.classList.remove('hidden');
-                    } else {
-                        visualizerUploadRow.classList.add('hidden');
+        if (visualizerCards.length > 0) {
+            visualizerCards.forEach(card => {
+                card.addEventListener('click', () => {
+                    const mode = card.getAttribute('data-mode');
+                    
+                    // Update active card highlight
+                    visualizerCards.forEach(c => c.classList.remove('active'));
+                    card.classList.add('active');
+
+                    if (window.Visualizer) {
+                        Visualizer.setMode(mode);
                     }
-                }
+
+                    if (visualizerUploadRow) {
+                        if (mode === 'custom') {
+                            visualizerUploadRow.classList.remove('hidden');
+                        } else {
+                            visualizerUploadRow.classList.add('hidden');
+                        }
+                    }
+                });
             });
         }
 
@@ -1072,9 +1079,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 reader.onload = (event) => {
                     if (window.Visualizer) {
                         Visualizer.handleCustomUpload(event.target.result);
+                        console.log('[Visualizer] Custom HTML uploaded, bytes:', event.target.result.length);
                     }
                 };
                 reader.readAsText(file);
+
+                // Reset the input so re-selecting the same file triggers the change event
+                e.target.value = '';
             });
         }
 
@@ -3725,7 +3736,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             if (window.Visualizer) {
-                if (isPlaying) {
+                const immersiveView = document.getElementById('immersive-view');
+                const isImmersiveOpen = immersiveView && !immersiveView.classList.contains('hidden');
+                if (isPlaying || isImmersiveOpen) {
                     Visualizer.start();
                 } else {
                     Visualizer.stop();
@@ -3804,6 +3817,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Initialize UI states from module
         shuffleBtn.classList.toggle('toggle-active', Playback.isShuffleActive);
         updateRepeatUI(Playback.repeatMode);
+
+        // Chromecast Click Handler and State Subscriber
+        const castBtn = document.getElementById('cast-btn');
+        if (castBtn) {
+            castBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (typeof cast !== 'undefined' && cast.framework) {
+                    cast.framework.CastContext.getInstance().requestSession()
+                        .then(() => console.log('[Cast] Session request dialog opened.'))
+                        .catch(err => console.error('[Cast] Session request failed:', err));
+                } else {
+                    console.warn('[Cast] Cast SDK is not loaded or available yet.');
+                    if (window.UI) {
+                        UI.showNotification('Chromecast Unavailable', 'Google Cast is not supported or loaded in this browser/device.');
+                    }
+                }
+            });
+        }
+
+        State.subscribe((key, value) => {
+            if (key === 'isCasting') {
+                const btn = document.getElementById('cast-btn');
+                if (btn) {
+                    if (value) {
+                        btn.classList.add('active-cast');
+                        btn.title = 'Disconnect Cast';
+                    } else {
+                        btn.classList.remove('active-cast');
+                        btn.title = 'Cast to TV / Speaker';
+                    }
+                }
+            }
+        });
 
         Router.navigate('home', {}, false);
         window.isAppInitialized = true;
