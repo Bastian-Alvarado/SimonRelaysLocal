@@ -1930,7 +1930,8 @@ body {
     gap: 12px;
     cursor: pointer;
     transition: transform 0.2s, background 0.2s;
-    min-width: 110px;
+    width: 164px;
+    max-width: 164px;
     padding: 12px;
     border-radius: 12px;
     flex-shrink: 0;
@@ -4905,4 +4906,132 @@ body.animations-enabled .play-pop {
         box-shadow: 0 0 16px rgba(244, 63, 94, 0.6);
         background: rgba(244, 63, 94, 0.3);
     }
+}
+
+/* ── Welcome Onboarding Modal Styles ──────────────────────────────────────── */
+.onboarding-modal {
+    max-width: 550px !important;
+    padding: 40px !important;
+    text-align: center;
+    border-radius: 28px !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6) !important;
+    animation: onboardingPop 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.onboarding-logo {
+    font-size: 32px;
+    margin-bottom: 8px;
+    justify-content: center;
+}
+
+.onboarding-subtitle {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 32px;
+}
+
+.onboarding-features {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    text-align: left;
+    margin-bottom: 36px;
+}
+
+.feature-item {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+}
+
+.feature-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(244, 63, 94, 0.12); /* --accent background tint */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.feature-text h3 {
+    font-size: 15px;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 3px;
+}
+
+.feature-text p {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+
+.onboarding-btn {
+    width: 100% !important;
+    padding: 16px !important;
+    font-weight: 800 !important;
+    border-radius: 16px !important;
+    letter-spacing: 1px !important;
+    transition: all 0.2s ease !important;
+}
+
+.onboarding-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+@keyframes onboardingPop {
+    from {
+        opacity: 0;
+        transform: scale(0.92) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* ── Update Available Modal Styles ────────────────────────────────────────── */
+.update-modal-card {
+    max-width: 450px !important;
+    padding: 36px !important;
+    text-align: center;
+    border-radius: 24px !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6) !important;
+    animation: onboardingPop 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.update-icon-wrapper {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(244, 63, 94, 0.12); /* --accent background tint */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    margin-bottom: 24px;
+    box-shadow: 0 0 16px rgba(244, 63, 94, 0.2);
+}
+
+.update-icon-wrapper svg {
+    animation: spin-slow 12s linear infinite;
+}
+
+.ghost-btn {
+    transition: all 0.2s ease !important;
+}
+
+.ghost-btn:hover {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    color: white !important;
 }

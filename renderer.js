@@ -1040,7 +1040,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             visualizerCards.forEach(card => {
                 card.addEventListener('click', () => {
                     const mode = card.getAttribute('data-mode');
-                    
+
                     // Update active card highlight
                     visualizerCards.forEach(c => c.classList.remove('active'));
                     card.classList.add('active');
@@ -3853,6 +3853,86 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         Router.navigate('home', {}, false);
         window.isAppInitialized = true;
+
+        // Check for application updates on startup
+        const APP_VERSION = '1.0.2';
+        try {
+            fetch(`/api/version?t=${Date.now()}`)
+                .then(res => {
+                    if (res.ok) return res.json();
+                    throw new Error('Failed to fetch version');
+                })
+                .then(data => {
+                    if (data && data.version && data.version !== APP_VERSION) {
+                        const updateModal = document.getElementById('update-modal');
+                        const updateNowBtn = document.getElementById('update-now-btn');
+                        const updateLaterBtn = document.getElementById('update-later-btn');
+
+                        if (updateModal && updateNowBtn && updateLaterBtn) {
+                            setTimeout(() => {
+                                updateModal.classList.remove('hidden');
+                            }, 1200); // Wait a bit after load
+
+                            updateLaterBtn.addEventListener('click', () => {
+                                updateModal.classList.add('hidden');
+                            });
+
+                            updateNowBtn.addEventListener('click', async () => {
+                                updateNowBtn.textContent = 'UPDATING...';
+                                updateNowBtn.disabled = true;
+
+                                // 1. Clear application assets caches (leaving IndexedDB completely safe!)
+                                if ('caches' in window) {
+                                    try {
+                                        const keys = await caches.keys();
+                                        await Promise.all(keys.map(key => caches.delete(key)));
+                                    } catch (e) { console.error('Cache clear failed:', e); }
+                                }
+
+                                // 2. Unregister Service Workers
+                                if ('serviceWorker' in navigator) {
+                                    try {
+                                        const registrations = await navigator.serviceWorker.getRegistrations();
+                                        await Promise.all(registrations.map(reg => reg.unregister()));
+                                    } catch (e) { console.error('SW unregistration failed:', e); }
+                                }
+
+                                // 3. Hard reload bypassing CDN/HTTP caches
+                                const cacheBusterUrl = `${window.location.origin}${window.location.pathname}?update=${Date.now()}`;
+                                window.location.replace(cacheBusterUrl);
+                            });
+                        }
+                    }
+                })
+                .catch(e => console.warn('[UpdateCheck] Failed to verify system version:', e));
+        } catch (e) {
+            console.warn('[UpdateCheck] Version check error:', e);
+        }
+
+        // Check for first-time user and show onboarding modal
+        const hasVisited = localStorage.getItem('simonRelays_visited');
+        if (!hasVisited) {
+            const welcomeModal = document.getElementById('welcome-modal');
+            const dismissBtn = document.getElementById('welcome-dismiss-btn');
+
+            if (welcomeModal && dismissBtn) {
+                // Smooth delayed reveal so core backgrounds are loaded
+                setTimeout(() => {
+                    welcomeModal.classList.remove('hidden');
+                }, 600);
+
+                dismissBtn.addEventListener('click', () => {
+                    welcomeModal.style.transition = 'opacity 0.3s ease';
+                    welcomeModal.style.opacity = '0';
+
+                    setTimeout(() => {
+                        welcomeModal.classList.add('hidden');
+                        welcomeModal.style.opacity = '';
+                        localStorage.setItem('simonRelays_visited', 'true');
+                    }, 300);
+                });
+            }
+        }
 
         // Check for initial hash and navigate if needed (after initialization)
         const initialHash = window.location.hash.substring(1);
