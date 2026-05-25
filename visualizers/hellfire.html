@@ -278,10 +278,10 @@ function drawTrackInfo() {
     const cx = canvas.width / 2;
     const topY = Math.floor(canvas.height * 0.12);
 
-    // Dynamic Blazing Fire Glow (Reduced on mobile to avoid CPU lag)
+    // Dynamic Blazing Fire Glow (Disabled on mobile to completely prevent CPU/GPU shadow calculations)
     if (isMobile) {
-        ctx.shadowColor = 'rgba(255, 60, 0, 0.8)';
-        ctx.shadowBlur = 6;
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
     } else {
         ctx.shadowColor = 'rgba(255, 60, 0, 0.95)';
         ctx.shadowBlur = 10 + bass * 15;
@@ -303,8 +303,10 @@ function drawTrackInfo() {
 
     // Artist — slightly smaller, glowing warm amber
     if (isMobile) {
-        ctx.shadowBlur = 3;
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
     } else {
+        ctx.shadowColor = 'rgba(255, 60, 0, 0.95)';
         ctx.shadowBlur = 6 + bass * 4;
     }
     const artistSize = Math.floor(15 + bass * 3);
@@ -432,10 +434,10 @@ function drawLyrics(time) {
                 ctx.fillText(line.text.toUpperCase(), cx + gx - 2, yPos + gy + 1);
             }
 
-            // Blazing white-hot glowing main text
+            // Blazing white-hot glowing main text (Bypassed shadow on mobile)
             if (isMobile) {
-                ctx.shadowColor = `rgba(255, 50, 0, 0.8)`;
-                ctx.shadowBlur = 6;
+                ctx.shadowBlur = 0;
+                ctx.shadowColor = 'transparent';
             } else {
                 ctx.shadowColor = `rgba(255, 50, 0, ${0.7 + bass * 0.3})`;
                 ctx.shadowBlur = 10 + bass * 15;
@@ -498,26 +500,36 @@ resize();
 
 // --- Main loop ---
 let _renderErrors = 0;
-function render() {
+let lastRenderTime = 0;
+const fpsLimit = 60;
+const frameInterval = 1000 / fpsLimit;
+
+function render(timestamp) {
     try {
-        const time = performance.now();
+        if (!timestamp) timestamp = performance.now();
+        const elapsed = timestamp - lastRenderTime;
 
-        const bgR = Math.floor(bass * 25);
-        ctx.fillStyle = `rgb(${bgR}, 0, 0)`;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (elapsed >= frameInterval) {
+            // Adjust lastRenderTime
+            lastRenderTime = timestamp - (elapsed % frameInterval);
 
-        // Vignette is drawn via hardware-accelerated CSS now!
-        drawRain();
-        drawEmbers();
+            const bgR = Math.floor(bass * 25);
+            ctx.fillStyle = `rgb(${bgR}, 0, 0)`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Lyrics drawn BEHIND the hands but in front of rain
-        drawLyrics(time);
+            // Vignette is drawn via hardware-accelerated CSS now!
+            drawRain();
+            drawEmbers();
 
-        drawBloodPool();
-        hands.forEach(h => drawHand(h, time));
+            // Lyrics drawn BEHIND the hands but in front of rain
+            drawLyrics(timestamp);
 
-        // Draw track info as the VERY TOP layer so it is crystal clear
-        drawTrackInfo();
+            drawBloodPool();
+            hands.forEach(h => drawHand(h, timestamp));
+
+            // Draw track info as the VERY TOP layer so it is crystal clear
+            drawTrackInfo();
+        }
 
     } catch (err) {
         _renderErrors++;

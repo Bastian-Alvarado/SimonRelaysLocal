@@ -25,6 +25,9 @@
     let lyrics = [];
     let activeLyricIndex = -1;
 
+    // --- Mobile Detection Flag ---
+    let isMobile = window.innerWidth <= 768;
+
     // --- Aesthetic Colors (Fallback constants) ---
     let colors = {
         bg: '#4C0A18',          // Deep maroon fallback
@@ -51,6 +54,7 @@
     function resize() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
+        isMobile = window.innerWidth <= 768;
     }
     window.addEventListener('resize', resize);
     resize();
@@ -127,22 +131,32 @@
 
     // --- Main render loop ---
     let renderErrors = 0;
-    function render() {
+    let lastRenderTime = 0;
+    const fpsLimit = 60;
+    const frameInterval = 1000 / fpsLimit;
+
+    function render(timestamp) {
         try {
-            const w = canvas.width;
-            const h = canvas.height;
-            const time = performance.now();
+            if (!timestamp) timestamp = performance.now();
+            const elapsed = timestamp - lastRenderTime;
 
-            // 1. Draw solid velvet background
-            ctx.fillStyle = colors.bg;
-            ctx.fillRect(0, 0, w, h);
+            if (elapsed >= frameInterval) {
+                // Adjust lastRenderTime
+                lastRenderTime = timestamp - (elapsed % frameInterval);
 
-            // 2. Draw ambient radial background gradient (Subtle glow)
-            const radGrad = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w * 0.65);
-            radGrad.addColorStop(0, hexToRgba(colors.accent, 0.12));
-            radGrad.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.fillStyle = radGrad;
-            ctx.fillRect(0, 0, w, h);
+                const w = canvas.width;
+                const h = canvas.height;
+
+                // 1. Draw solid velvet background
+                ctx.fillStyle = colors.bg;
+                ctx.fillRect(0, 0, w, h);
+
+                // 2. Draw ambient radial background gradient (Subtle glow)
+                const radGrad = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w * 0.65);
+                radGrad.addColorStop(0, hexToRgba(colors.accent, 0.12));
+                radGrad.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = radGrad;
+                ctx.fillRect(0, 0, w, h);
 
             // 3. Define block dimensions (Centered layout matching screenshot)
             const blockW = Math.min(540, w * 0.85);
@@ -162,8 +176,8 @@
             const barW = (blockW - totalSpacing) / barCount;
             
             ctx.save();
-            ctx.shadowColor = colors.accent;
-            ctx.shadowBlur = 4 + bass * 6;
+            ctx.shadowColor = isMobile ? 'transparent' : colors.accent;
+            ctx.shadowBlur = isMobile ? 0 : 4 + bass * 6;
 
             for (let i = 0; i < barCount; i++) {
                 // Map the frequency spectrum elements (prioritizing low to mid-highs)
@@ -199,8 +213,8 @@
             const coverY = startY + spectrumHeight + spectrumGap;
 
             ctx.save();
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-            ctx.shadowBlur = 15;
+            ctx.shadowColor = isMobile ? 'transparent' : 'rgba(0, 0, 0, 0.4)';
+            ctx.shadowBlur = isMobile ? 0 : 15;
 
             // Draw card background
             ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
@@ -239,8 +253,8 @@
                 ctx.strokeStyle = hexToRgba(colors.accent, 0.5);
                 ctx.fillStyle = hexToRgba(colors.accent, 0.4);
                 ctx.lineWidth = 2;
-                ctx.shadowColor = colors.accent;
-                ctx.shadowBlur = 8;
+                ctx.shadowColor = isMobile ? 'transparent' : colors.accent;
+                ctx.shadowBlur = isMobile ? 0 : 8;
                 
                 // Draw simple music note icon
                 const centerX = coverX + coverSize / 2;
@@ -283,8 +297,8 @@
             const titleFontSize = 26;
             ctx.font = `bold ${titleFontSize}px Outfit, sans-serif`;
             ctx.fillStyle = '#ffffff';
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
-            ctx.shadowBlur = 4;
+            ctx.shadowColor = isMobile ? 'transparent' : 'rgba(0, 0, 0, 0.3)';
+            ctx.shadowBlur = isMobile ? 0 : 4;
             
             // Clip long titles gracefully
             const titleText = trackTitle || 'SIMPLE EXAMPLE';
@@ -309,8 +323,8 @@
                     
                     ctx.font = 'bold 18px Outfit, sans-serif';
                     ctx.fillStyle = '#ffffff';
-                    ctx.shadowColor = colors.accent;
-                    ctx.shadowBlur = 8 + bass * 8;
+                    ctx.shadowColor = isMobile ? 'transparent' : colors.accent;
+                    ctx.shadowBlur = isMobile ? 0 : 8 + bass * 8;
                     
                     // Center the text
                     ctx.fillText(activeLine.text.toUpperCase(), w / 2, lyricY);
@@ -322,7 +336,6 @@
                     ctx.restore();
                 }
             }
-
         } catch (err) {
             renderErrors++;
             if (renderErrors <= 5) {

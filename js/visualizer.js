@@ -22,6 +22,21 @@ const Visualizer = (() => {
     let iframe = null;
     let iframeLoaded = false;
     let activeBlobUrl = null;
+    let iframeNeedsInitialData = false;
+
+    // Caching track updates for delta-broadcasting
+    let lastSentTrackPath = null;
+    let lastSentLyricLength = 0;
+    let lastSentColors = { accent: '', gradient1: '', gradient2: '' };
+
+    // CSS Variable Caching (Avoid Layout Thrashing)
+    let cachedColors = { accent: '#e11d48', gradient1: '#f43f5e', gradient2: '#f43f5e' };
+    let lastColorUpdateTime = 0;
+
+    // FPS Capping variables
+    let lastRenderTime = 0;
+    const fpsLimit = 60;
+    const frameInterval = 1000 / fpsLimit;
 
     function init() {
         container = document.getElementById('immersive-visualizer-container');
@@ -224,6 +239,7 @@ const Visualizer = (() => {
 
             iframe.onload = () => {
                 iframeLoaded = true;
+                iframeNeedsInitialData = true; // Force full broadcast on next frame
                 console.log('[Visualizer] Custom/Built-in iframe loaded successfully.');
             };
 
@@ -261,6 +277,8 @@ const Visualizer = (() => {
             audioCtx.resume();
         }
 
+        lastRenderTime = 0;
+        updateCachedColors(); // Fetch colors immediately on start
         animationFrameId = requestAnimationFrame(renderLoop);
     }
 
@@ -271,7 +289,32 @@ const Visualizer = (() => {
         }
     }
 
-    function renderLoop() {
+    function updateCachedColors() {
+        try {
+            const rootStyle = getComputedStyle(document.documentElement);
+            cachedColors.accent = rootStyle.getPropertyValue('--accent').trim() || '#e11d48';
+            cachedColors.gradient1 = rootStyle.getPropertyValue('--immersive-gradient-1').trim() || '#f43f5e';
+            cachedColors.gradient2 = rootStyle.getPropertyValue('--immersive-gradient-2').trim() || '#f43f5e';
+        } catch (e) {
+            console.warn('[Visualizer] Failed to read dynamic styles:', e);
+        }
+    }
+
+    function renderLoop(timestamp) {
+        // Request the next frame immediately to keep the loop active
+        animationFrameId = requestAnimationFrame(renderLoop);
+
+        if (!timestamp) timestamp = performance.now();
+        const elapsed = timestamp - lastRenderTime;
+
+        // Cap at 60 FPS
+        if (elapsed < frameInterval) {
+            return;
+        }
+
+        // Adjust lastRenderTime to maintain consistent intervals
+        lastRenderTime = timestamp - (elapsed % frameInterval);
+
         if (window.Playback && Playback.currentHowl) {
             const howl = Playback.currentHowl;
             if (howl && howl._sounds && howl._sounds[0] && howl._sounds[0]._node) {
@@ -283,6 +326,13 @@ const Visualizer = (() => {
         }
 
         if (!analyser || currentMode === 'none') return;
+
+        // Dynamically cache CSS styles once every second (60 frames)
+        const now = Date.now();
+        if (now - lastColorUpdateTime > 1000) {
+            updateCachedColors();
+            lastColorUpdateTime = now;
+        }
 
         analyser.getByteFrequencyData(dataArray);
         analyser.getByteTimeDomainData(timeDataArray);
@@ -302,54 +352,52 @@ const Visualizer = (() => {
         } else if ((currentMode === 'custom' || currentMode === 'hellfire' || currentMode === 'simple_example') && iframe && iframeLoaded) {
             broadcastToIframe();
         }
-
-        animationFrameId = requestAnimationFrame(renderLoop);
     }
 
     // ── Built-in Visualizer: Retro Bars ──────────────────────────────────────
     function drawRetroBars(width, height) {
         const barWidth = (width / dataArray.length) * 1.4;
-        let barHeight;
+        const accent = cachedColors.accent;
+        const color2 = cachedColors.gradient1;
         let x = 0;
 
-        // Fetch dynamic theme color gradients
-        const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#e11d48';
-        const color2 = getComputedStyle(document.documentElement).getPropertyValue('--immersive-gradient-1').trim() || '#f43f5e';
+        // 1. Create a single dynamic vertical gradient shared across all bars
+        const sharedGradient = ctx.createLinearGradient(0, height * 0.55, 0, height);
+        sharedGradient.addColorStop(0, accent);
+        sharedGradient.addColorStop(0.6, color2);
+        sharedGradient.addColorStop(1, 'rgba(10, 10, 15, 0)');
 
+        // Pre-compute bar heights to decouple loop states
+        const barHeights = new Array(dataArray.length);
+        for (let i = 0; i < dataArray.length; i++) {
+            const factor = i < 15 ? 0.95 : (1.1 + (i / dataArray.length) * 0.5);
+            let barHeight = (dataArray[i] / 255) * height * 0.45 * factor;
+            barHeights[i] = Math.max(3, barHeight);
+        }
+
+        // 2. Batch Draw All Main Bars (Single GPU Pass with Shadow)
         ctx.shadowBlur = 12;
         ctx.shadowColor = accent;
-
+        ctx.fillStyle = sharedGradient;
+        
+        ctx.beginPath();
         for (let i = 0; i < dataArray.length; i++) {
-            // Apply exponential attenuation to low frequencies, boost high frequencies
-            const factor = i < 15 ? 0.95 : (1.1 + (i / dataArray.length) * 0.5);
-            barHeight = (dataArray[i] / 255) * height * 0.45 * factor;
-            
-            // Limit minimum height for sleek idling waves
-            if (barHeight < 3) barHeight = 3;
-
-            const gradient = ctx.createLinearGradient(0, height - barHeight, 0, height);
-            gradient.addColorStop(0, accent);
-            gradient.addColorStop(0.6, color2);
-            gradient.addColorStop(1, 'rgba(10, 10, 15, 0)');
-
-            ctx.fillStyle = gradient;
-            
-            // Rounded corners on bars
-            ctx.beginPath();
-            ctx.roundRect(x, height - barHeight, barWidth - 3, barHeight, [4, 4, 0, 0]);
-            ctx.fill();
-
-            // Symmetrical Reflection bar
-            ctx.shadowBlur = 0; // Disable shadow for reflection to save GPU cycles
-            ctx.fillStyle = `rgba(${hexToRgb(accent)}, 0.12)`;
-            ctx.beginPath();
-            ctx.roundRect(x, height, barWidth - 3, barHeight * 0.4, [0, 0, 4, 4]);
-            ctx.fill();
-            
-            ctx.shadowBlur = 12; // Re-enable for main bar
+            ctx.roundRect(x, height - barHeights[i], barWidth - 3, barHeights[i], [4, 4, 0, 0]);
             x += barWidth;
         }
+        ctx.fill();
+
+        // 3. Batch Draw All Reflection Bars (Single GPU Pass, No Shadow)
         ctx.shadowBlur = 0;
+        ctx.fillStyle = `rgba(${hexToRgb(accent)}, 0.12)`;
+        x = 0;
+
+        ctx.beginPath();
+        for (let i = 0; i < dataArray.length; i++) {
+            ctx.roundRect(x, height, barWidth - 3, barHeights[i] * 0.4, [0, 0, 4, 4]);
+            x += barWidth;
+        }
+        ctx.fill();
     }
 
     // ── Built-in Visualizer: Pulse Ring ──────────────────────────────────────
@@ -357,9 +405,9 @@ const Visualizer = (() => {
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // Fetch dynamic theme colors
-        const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#e11d48';
-        const color2 = getComputedStyle(document.documentElement).getPropertyValue('--immersive-gradient-1').trim() || '#f43f5e';
+        // Fetch dynamic theme colors from cache
+        const accent = cachedColors.accent;
+        const color2 = cachedColors.gradient1;
 
         // Calculate average bass frequency (first 8 index values represent bass)
         let bassSum = 0;
@@ -449,6 +497,9 @@ const Visualizer = (() => {
         }
 
         // Draw and update particle buffer
+        ctx.shadowBlur = 0; // Explicitly disable shadow blurs for particles to gain massive performance
+        const accentRgb = hexToRgb(accent);
+
         particles.forEach((p, idx) => {
             p.x += p.vx;
             p.y += p.vy;
@@ -460,7 +511,9 @@ const Visualizer = (() => {
             }
 
             ctx.beginPath();
-            ctx.fillStyle = `rgba(${p.color === '#ffffff' ? '255,255,255' : hexToRgb(p.color)}, ${p.alpha})`;
+            ctx.fillStyle = p.color === '#ffffff'
+                ? `rgba(255, 255, 255, ${p.alpha})`
+                : `rgba(${accentRgb}, ${p.alpha})`;
             ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
             ctx.fill();
         });
@@ -482,62 +535,75 @@ const Visualizer = (() => {
         const avgBass = bass / 10;
 
         const rawTrack = (window.Playback && window.Playback.currentTrack) || {};
+        const trackPath = rawTrack.relativePath || '';
+        const lyricsData = (window.Lyrics && window.Lyrics.lyricsData) || [];
+        
+        // Track changes to determine if a full payload is required
+        const trackChanged = (trackPath !== lastSentTrackPath);
+        const lyricsChanged = (lyricsData.length !== lastSentLyricLength);
+        const colorsChanged = (
+            cachedColors.accent !== lastSentColors.accent ||
+            cachedColors.gradient1 !== lastSentColors.gradient1 ||
+            cachedColors.gradient2 !== lastSentColors.gradient2
+        );
 
-        // Build a clean, serializable track object — raw track may have Blobs, DOM refs,
-        // or other non-cloneable properties that would cause postMessage to throw silently.
-        const md = rawTrack.metadata || {};
-        const track = {
-            filename: rawTrack.filename || '',
-            relativePath: rawTrack.relativePath || '',
-            url: rawTrack.url || '',
-            metadata: {
-                title: md.title || '',
-                artist: md.artist || '',
-                album: md.album || '',
-                genre: md.genre || '',
-                duration: md.duration || 0,
-                hasCover: !!md.hasCover
-            }
-        };
-
-        // Build cover art URL from track relativePath + server base URL
-        let coverArtUrl = null;
-        if (track.relativePath && window.API && typeof window.API.getBaseUrl === 'function') {
-            const serverBase = window.API.getBaseUrl();
-            coverArtUrl = `${serverBase}/api/cover?path=${encodeURIComponent(track.relativePath)}`;
-        }
-
-        // Pull lyrics data from the Lyrics module (safe no-op if unavailable or not loaded)
-        let lyrics = [];
-        let activeLyricIndex = -1;
-        if (window.Lyrics) {
-            const raw = window.Lyrics.lyricsData;
-            if (Array.isArray(raw)) {
-                lyrics = raw.map(line => ({ time: line.time, text: line.text }));
-            }
-            activeLyricIndex = window.Lyrics.currentLyricIndex;
-        }
+        const isFullBroadcast = iframeNeedsInitialData || trackChanged || lyricsChanged || colorsChanged;
 
         const msg = {
             type: 'audio-data',
-            frequency: Array.from(dataArray),
-            timeDomain: Array.from(timeDataArray),
+            frequency: new Uint8Array(dataArray),
+            timeDomain: new Uint8Array(timeDataArray),
             volume: volume / 255,
             bass: avgBass / 255,
-            track,
-            coverArtUrl,
-            lyrics,
-            activeLyricIndex,
-            colors: {
-                accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#e11d48',
-                gradient1: getComputedStyle(document.documentElement).getPropertyValue('--immersive-gradient-1').trim() || '#f43f5e',
-                gradient2: getComputedStyle(document.documentElement).getPropertyValue('--immersive-gradient-2').trim() || '#f43f5e'
-            }
+            activeLyricIndex: (window.Lyrics ? window.Lyrics.currentLyricIndex : -1)
         };
 
-        if (!_broadcastLoggedOnce) {
-            _broadcastLoggedOnce = true;
-            console.log('[Visualizer] First broadcast to iframe. Track title:', track.metadata.title, '| Lyrics:', lyrics.length, '| ActiveIdx:', activeLyricIndex);
+        if (isFullBroadcast) {
+            // Build a clean, serializable track object — raw track may have Blobs, DOM refs,
+            // or other non-cloneable properties that would cause postMessage to throw silently.
+            const md = rawTrack.metadata || {};
+            msg.track = {
+                filename: rawTrack.filename || '',
+                relativePath: rawTrack.relativePath || '',
+                url: rawTrack.url || '',
+                metadata: {
+                    title: md.title || '',
+                    artist: md.artist || '',
+                    album: md.album || '',
+                    genre: md.genre || '',
+                    duration: md.duration || 0,
+                    hasCover: !!md.hasCover
+                }
+            };
+
+            // Build cover art URL from track relativePath + server base URL
+            let coverArtUrl = null;
+            if (msg.track.relativePath && window.API && typeof window.API.getBaseUrl === 'function') {
+                const serverBase = window.API.getBaseUrl();
+                coverArtUrl = `${serverBase}/api/cover?path=${encodeURIComponent(msg.track.relativePath)}`;
+            }
+            msg.coverArtUrl = coverArtUrl;
+
+            // Map lyrics
+            msg.lyrics = lyricsData.map(line => ({ time: line.time, text: line.text }));
+
+            // Colors
+            msg.colors = {
+                accent: cachedColors.accent,
+                gradient1: cachedColors.gradient1,
+                gradient2: cachedColors.gradient2
+            };
+
+            // Update sent tracking variables
+            lastSentTrackPath = trackPath;
+            lastSentLyricLength = lyricsData.length;
+            lastSentColors = { ...cachedColors };
+            iframeNeedsInitialData = false;
+
+            if (!_broadcastLoggedOnce || trackChanged) {
+                _broadcastLoggedOnce = true;
+                console.log('[Visualizer] Sending FULL track payload to iframe. Track title:', msg.track.metadata.title, '| Lyrics count:', msg.lyrics.length);
+            }
         }
 
         try {
